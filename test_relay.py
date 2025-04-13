@@ -7,10 +7,10 @@ app = Flask(__name__)
 # Configuratie voor de RS485 Modbus-verbinding
 RS485_PORT = '/dev/ttyUSB0'  # Pas dit aan indien nodig (bijv. "COM3" op Windows)
 BAUDRATE = 9600
-MODBUS_UNIT = 1             # Zorg dat dit overeenkomt met het slave-adres van je relay unit
-COIL_ADDRESS = 0            # Gebruik hier het coil-adres van de relay die je wilt testen
+MODBUS_UNIT = 1             # Dit moet overeenkomen met het slave-adres van je relay unit
+COIL_ADDRESS = 0            # Dit is het coil-adres van de relay die je wilt testen
 
-# Maak de ModbusSerialClient aan (PyModbus 3.x, zonder 'method'-parameter)
+# Maak de ModbusSerialClient aan (PyModbus 3.x)
 client = ModbusSerialClient(
     port=RS485_PORT,
     baudrate=BAUDRATE,
@@ -63,14 +63,17 @@ def toggle_relay():
         print("[FALLBACK] Toggling relay gesimuleerd.")
         return None
     else:
-        result = client.read_coils(COIL_ADDRESS, 1, unit=MODBUS_UNIT)
-        if result.isError():
-            print("Fout bij het uitlezen van de huidige relay-status.")
-            return None
-        current_state = result.bits[0]
-        new_state = not current_state
-        print(f"Relay {COIL_ADDRESS} schakelen van {current_state} naar {new_state}.")
-        set_relay_state(new_state)
+        try:
+            result = client.read_coils(COIL_ADDRESS, 1, slave=MODBUS_UNIT)
+            if result.isError():
+                print("Fout bij het uitlezen van de huidige relay-status.")
+                return None
+            current_state = result.bits[0]
+            new_state = not current_state
+            print(f"Relay {COIL_ADDRESS} schakelen van {current_state} naar {new_state}.")
+            set_relay_state(new_state)
+        except Exception as e:
+            print(f"Exception tijdens toggle: {e}")
 
 def get_coil_status():
     """
@@ -81,8 +84,7 @@ def get_coil_status():
         return "Unknown (fallback mode)"
     else:
         try:
-            # Gebruik nu 'unit' in plaats van 'slave' voor de leesopdracht
-            result = client.read_coils(COIL_ADDRESS, 1, unit=MODBUS_UNIT)
+            result = client.read_coils(COIL_ADDRESS, 1, slave=MODBUS_UNIT)
             if result.isError():
                 return "Error"
             else:
@@ -109,10 +111,9 @@ def relay_action(action):
         toggle_relay()
     else:
         print(f"Ongeldige actie: {action}")
-    time.sleep(1)
+    time.sleep(1)  # Even pauzeren zodat de actie zichtbaar kan zijn
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
     init_modbus()
-    # Start de webserver op poort 5001
     app.run(host='0.0.0.0', port=5001)
