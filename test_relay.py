@@ -7,7 +7,7 @@ app = Flask(__name__)
 # Configuratie voor de RS485 Modbus-verbinding
 RS485_PORT = '/dev/ttyUSB0'  # Pas dit aan indien nodig (bijv. "COM3" op Windows)
 BAUDRATE = 9600
-MODBUS_UNIT = 1             # Zorg dat dit overeenkomt met de slave-ID op de relay unit
+MODBUS_UNIT = 1             # Zorg dat dit overeenkomt met het slave-adres van je relay unit
 COIL_ADDRESS = 0            # Gebruik hier het coil-adres van de relay die je wilt testen
 
 # Maak de ModbusSerialClient aan (PyModbus 3.x, zonder 'method'-parameter)
@@ -41,7 +41,7 @@ def init_modbus():
 def set_relay_state(state):
     """
     Zet de relay op 'state' (True voor aan, False voor uit).
-    Indien fallback_mode actief is, wordt de actie gesimuleerd.
+    Als fallback_mode actief is, wordt de actie gesimuleerd.
     """
     if fallback_mode:
         print(f"[FALLBACK] Simuleer: relay {COIL_ADDRESS} op {state} gezet.")
@@ -72,16 +72,35 @@ def toggle_relay():
         print(f"Relay {COIL_ADDRESS} schakelen van {current_state} naar {new_state}.")
         set_relay_state(new_state)
 
+def get_coil_status():
+    """
+    Leest de status van de coil (ON of OFF).
+    Als fallback_mode actief is, retourneert hij 'Unknown (fallback)'.
+    """
+    if fallback_mode:
+        return "Unknown (fallback mode)"
+    else:
+        result = client.read_coils(COIL_ADDRESS, 1, slave=MODBUS_UNIT)
+        if result.isError():
+            return "Error"
+        else:
+            return "ON" if result.bits[0] else "OFF"
+
 @app.route('/')
 def index():
-    """Render de testpagina."""
-    return render_template('test_relay.html', fallback_mode=fallback_mode)
+    """Render de testpagina met de status van de RS485-verbinding en de coil."""
+    coil_state = get_coil_status()
+    # We geven ook het coil-adres door, zodat de gebruiker weet om welke coil het gaat
+    return render_template('test_relay.html',
+                           fallback_mode=fallback_mode,
+                           coil_state=coil_state,
+                           coil_number=COIL_ADDRESS)
 
 @app.route('/relay/<action>')
 def relay_action(action):
     """
-    Verwerkt de actie: 'on', 'off' of 'toggle' voor de relay.
-    Na de actie wacht het even, zodat deze zichtbaar kan zijn.
+    Voer een actie uit op de relay: 'on', 'off' of 'toggle'.
+    Wacht kort zodat de actie zichtbaar kan zijn.
     """
     if action == 'on':
         set_relay_state(True)
@@ -96,4 +115,5 @@ def relay_action(action):
 
 if __name__ == '__main__':
     init_modbus()
+    # Start de webserver op poort 5001
     app.run(host='0.0.0.0', port=5001)
