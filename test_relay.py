@@ -5,6 +5,7 @@ from pymodbus.exceptions import ModbusIOException
 
 app = Flask(__name__)
 
+#test
 # Configuratie voor de RS485 Modbus-verbinding
 RS485_PORT = '/dev/ttyUSB0'  # Pas dit aan indien nodig (bijv. "COM3" op Windows)
 BAUDRATE = 9600
