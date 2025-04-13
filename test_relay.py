@@ -1,6 +1,7 @@
 import time
 from flask import Flask, render_template, redirect, url_for
 from pymodbus.client import ModbusSerialClient
+from pymodbus.exceptions import ModbusIOException
 
 app = Flask(__name__)
 
@@ -8,7 +9,7 @@ app = Flask(__name__)
 RS485_PORT = '/dev/ttyUSB0'  # Pas dit aan indien nodig (bijv. "COM3" op Windows)
 BAUDRATE = 9600
 MODBUS_UNIT = 1             # Dit moet overeenkomen met het slave-adres van je relay unit
-COIL_ADDRESS = 0            # Dit is het coil-adres van de relay die je wilt testen
+COIL_ADDRESS = 0            # Het coil-adres van de relay die je wilt testen
 
 # Maak de ModbusSerialClient aan (PyModbus 3.x)
 client = ModbusSerialClient(
@@ -26,7 +27,7 @@ fallback_mode = False
 def init_modbus():
     """
     Probeer de Modbus-verbinding tot stand te brengen.
-    Als dit niet lukt, wordt fallback_mode automatisch ingeschakeld.
+    Als dit niet lukt, wordt fallback_mode ingeschakeld.
     """
     global fallback_mode
     if client.connect():
@@ -41,23 +42,27 @@ def init_modbus():
 def set_relay_state(state):
     """
     Zet de relay op 'state' (True voor aan, False voor uit).
-    Als fallback_mode actief is, wordt de actie gesimuleerd.
+    Indien er een fout optreedt, wordt de fout afgehandeld zodat de webpagina niet vastloopt.
     """
     if fallback_mode:
         print(f"[FALLBACK] Simuleer: relay {COIL_ADDRESS} op {state} gezet.")
         return None
     else:
-        result = client.write_coil(COIL_ADDRESS, state, slave=MODBUS_UNIT)
-        if result.isError():
-            print(f"Fout bij het instellen van relay {COIL_ADDRESS} op {state}.")
-        else:
-            print(f"Relay {COIL_ADDRESS} succesvol op {state} gezet.")
-        return result
+        try:
+            result = client.write_coil(COIL_ADDRESS, state, slave=MODBUS_UNIT)
+            if result.isError():
+                print(f"Fout bij het instellen van relay {COIL_ADDRESS} op {state}.")
+            else:
+                print(f"Relay {COIL_ADDRESS} succesvol op {state} gezet.")
+            return result
+        except Exception as e:
+            print(f"Exception tijdens set_relay_state: {e}")
+            return None
 
 def toggle_relay():
     """
-    Lees de huidige relay-status en schakelt deze.
-    Als fallback_mode actief is, wordt de toggle gesimuleerd.
+    Leest de huidige relay-status en schakelt deze.
+    Indien er een fout optreedt, wordt dit netjes afgehandeld.
     """
     if fallback_mode:
         print("[FALLBACK] Toggling relay gesimuleerd.")
@@ -78,7 +83,7 @@ def toggle_relay():
 def get_coil_status():
     """
     Leest de status van de coil (ON of OFF).
-    Als fallback_mode actief is, retourneert hij 'Unknown (fallback mode)'.
+    Als fallback_mode actief is of als er een fout optreedt, retourneert het een geschikte melding.
     """
     if fallback_mode:
         return "Unknown (fallback mode)"
@@ -111,7 +116,7 @@ def relay_action(action):
         toggle_relay()
     else:
         print(f"Ongeldige actie: {action}")
-    time.sleep(1)  # Even pauzeren zodat de actie zichtbaar kan zijn
+    time.sleep(1)  # Kort wachten zodat de actie zichtbaar is
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
