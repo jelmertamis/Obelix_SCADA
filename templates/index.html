@@ -11,6 +11,13 @@
             margin: 0;
             padding: 0;
         }
+        .simulatie-melding {
+            background: #ffcc00;
+            color: #333;
+            padding: 10px;
+            font-weight: bold;
+            text-align: center;
+        }
         .alarms {
             background: #ff4444;
             color: white;
@@ -21,13 +28,13 @@
             margin: 20px;
         }
         .btn {
-            padding: 20px 20px; /* Grotere knoppen: meer padding */
+            padding: 20px 20px;
             margin: 5px;
             background: #4caf50;
             color: white;
             border: none;
             cursor: pointer;
-            font-size: 16px; /* Grotere tekst */
+            font-size: 16px;
             border-radius: 4px;
         }
         .btn-off {
@@ -36,7 +43,6 @@
         .btn-auto {
             background: #ff9800;
         }
-        /* Classes voor de kleuren van de pompen en compressoren */
         .pump-on {
             fill: green;
         }
@@ -79,9 +85,16 @@
     </style>
 </head>
 <body>
+    <!-- Toon fallback melding indien we in simulatiemodus zitten -->
+    {% if fallback_mode %}
+      <div class="simulatie-melding">
+         Simulatie modus geactiveerd - hardware is niet beschikbaar.
+      </div>
+    {% endif %}
+    
     <div class="alarms">No Alarms</div>
     <h1>Bioreactor R301</h1>
-    <svg width="600" height="400">
+    <svg width="600" height="500">
         <!-- Tank T300 (Influent) -->
         <rect x="100" y="150" width="80" height="100" fill="#4caf50" stroke="#333" stroke-width="2"/>
         <text x="110" y="140" font-size="12">T300</text>
@@ -112,7 +125,7 @@
         <circle cx="450" cy="200" r="15" class="{{ 'pump-on' if relays[1] else 'pump-off' }}"/>
         <text x="470" y="195" font-size="12">P303A</text>
         
-        <!-- Nutrient Pump (P406, van Nutrients tank met rechte hoeken) -->
+        <!-- Nutrient Pump (P406) -->
         <line x1="180" y1="325" x2="240" y2="325" stroke="black" stroke-width="2"/>
         <line x1="240" y1="325" x2="240" y2="250" stroke="black" stroke-width="2"/>
         <line x1="240" y1="250" x2="300" y2="250" stroke="black" stroke-width="2"/>
