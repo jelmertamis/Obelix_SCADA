@@ -82,5 +82,13 @@
             {{ entry }}<br>
         {% endfor %}
     </div>
+    <script>
+      window.onload = function() {
+        var logDiv = document.querySelector('.log');
+        if(logDiv) {
+          logDiv.scrollTop = logDiv.scrollHeight;
+        }
+      };
+    </script>
 </body>
 </html>
