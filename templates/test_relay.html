@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Relay Test Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .status {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .fallback {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .button {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 15px 25px;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+            text-decoration: none;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .button.off {
+            background: #f44336;
+        }
+        .button.toggle {
+            background: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <div class="status">
+        {% if fallback_mode %}
+            <span class="fallback">Fallback modus actief: hardware niet beschikbaar.</span>
+        {% else %}
+            Relay gekoppeld.
+        {% endif %}
+    </div>
+    <h1>Relay Test Interface</h1>
+    <div>
+        <a href="{{ url_for('relay_action', action='on') }}" class="button">Turn On</a>
+        <a href="{{ url_for('relay_action', action='off') }}" class="button off">Turn Off</a>
+        <a href="{{ url_for('relay_action', action='toggle') }}" class="button toggle">Toggle</a>
+    </div>
+</body>
+</html>
