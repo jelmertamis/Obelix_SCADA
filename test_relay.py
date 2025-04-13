@@ -63,7 +63,7 @@ def toggle_relay():
         print("[FALLBACK] Toggling relay gesimuleerd.")
         return None
     else:
-        result = client.read_coils(COIL_ADDRESS, 1, slave=MODBUS_UNIT)
+        result = client.read_coils(COIL_ADDRESS, 1, unit=MODBUS_UNIT)
         if result.isError():
             print("Fout bij het uitlezen van de huidige relay-status.")
             return None
@@ -75,22 +75,25 @@ def toggle_relay():
 def get_coil_status():
     """
     Leest de status van de coil (ON of OFF).
-    Als fallback_mode actief is, retourneert hij 'Unknown (fallback)'.
+    Als fallback_mode actief is, retourneert hij 'Unknown (fallback mode)'.
     """
     if fallback_mode:
         return "Unknown (fallback mode)"
     else:
-        result = client.read_coils(COIL_ADDRESS, 1, slave=MODBUS_UNIT)
-        if result.isError():
-            return "Error"
-        else:
-            return "ON" if result.bits[0] else "OFF"
+        try:
+            # Gebruik nu 'unit' in plaats van 'slave' voor de leesopdracht
+            result = client.read_coils(COIL_ADDRESS, 1, unit=MODBUS_UNIT)
+            if result.isError():
+                return "Error"
+            else:
+                return "ON" if result.bits[0] else "OFF"
+        except Exception as e:
+            print(f"Exception tijdens het lezen van de coil status: {e}")
+            return "Exception"
 
 @app.route('/')
 def index():
-    """Render de testpagina met de status van de RS485-verbinding en de coil."""
     coil_state = get_coil_status()
-    # We geven ook het coil-adres door, zodat de gebruiker weet om welke coil het gaat
     return render_template('test_relay.html',
                            fallback_mode=fallback_mode,
                            coil_state=coil_state,
@@ -98,10 +101,6 @@ def index():
 
 @app.route('/relay/<action>')
 def relay_action(action):
-    """
-    Voer een actie uit op de relay: 'on', 'off' of 'toggle'.
-    Wacht kort zodat de actie zichtbaar kan zijn.
-    """
     if action == 'on':
         set_relay_state(True)
     elif action == 'off':
