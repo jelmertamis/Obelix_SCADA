@@ -11,13 +11,12 @@ app = Flask(__name__)
 RS485_PORT = '/dev/ttyUSB0'  # Pas aan indien nodig (bijv. "COM3" op Windows)
 BAUDRATE = 9600
 MODBUS_UNIT = 1             # Dit moet overeenkomen met het slave-adres van je relay unit
-# Dit is het standaard coil-adres dat getest wordt
-COIL_ADDRESS = 0            
+COIL_ADDRESS = 0            # Dit is het standaard coil-adres dat getest wordt
 
 # Globale variabelen voor coil nummer en log berichten
-current_coil = COIL_ADDRESS  # Start met het standaard coil-adres
-log_messages = []            # Lijst om logmeldingen op te slaan
-MAX_LOG_MESSAGES = 20        # Maximum aantal logregels om te bewaren
+current_coil = COIL_ADDRESS
+log_messages = []
+MAX_LOG_MESSAGES = 20
 
 # ----------------------------
 # Helper functie voor logging
@@ -27,7 +26,6 @@ def add_log(message):
     timestamp = time.strftime("%H:%M:%S")
     entry = f"[{timestamp}] {message}"
     log_messages.append(entry)
-    # Houd enkel de laatste MAX_LOG_MESSAGES meldingen
     if len(log_messages) > MAX_LOG_MESSAGES:
         log_messages = log_messages[-MAX_LOG_MESSAGES:]
     print(entry)
@@ -38,13 +36,11 @@ def add_log(message):
 client = ModbusSerialClient(
     port=RS485_PORT,
     baudrate=BAUDRATE,
-    timeout=1,
+    timeout=3,  # Increased timeout
     parity='N',
     stopbits=1,
     bytesize=8
 )
-# Stel het standaard slave-adres in op het client-object
-client.unit = MODBUS_UNIT
 
 fallback_mode = False
 
@@ -69,8 +65,7 @@ def set_relay_state(state):
         return None
     else:
         try:
-            # Roep write_coil aan zonder extra keyword; het slave-adres is al ingesteld
-            result = client.write_coil(current_coil, state)
+            result = client.write_coil(current_coil, state, unit=MODBUS_UNIT)  # Changed 'slave' to 'unit'
             if result.isError():
                 add_log(f"Fout bij instellen van relay {current_coil} op {state}.")
             else:
@@ -87,7 +82,7 @@ def toggle_relay():
         return None
     else:
         try:
-            result = client.read_coils(current_coil, 1)
+            result = client.read_coils(current_coil, 1, unit=MODBUS_UNIT)  # Changed 'slave' to 'unit'
             if result.isError():
                 add_log("Fout bij het uitlezen van de huidige relay-status.")
                 return None
@@ -104,7 +99,7 @@ def get_coil_status():
         return "Unknown (fallback mode)"
     else:
         try:
-            result = client.read_coils(current_coil, 1)
+            result = client.read_coils(current_coil, 1, unit=MODBUS_UNIT)  # Changed 'slave' to 'unit'
             if result.isError():
                 return "Error"
             else:
@@ -120,7 +115,7 @@ def get_coil_status():
 def index():
     coil_state = get_coil_status()
     return render_template('test_relay_extra.html',
-                           fallback_mode=fallback_mode,
+                           fallback_mode= fallback_mode,
                            coil_state=coil_state,
                            coil_number=current_coil,
                            log_messages=log_messages)
@@ -135,7 +130,7 @@ def relay_action(action):
         toggle_relay()
     else:
         add_log(f"Ongeldige actie: {action}")
-    time.sleep(1)  # Even wachten zodat de actie zichtbaar is
+    time.sleep(1)
     return redirect(url_for('index'))
 
 @app.route('/update_coil', methods=['POST'])
