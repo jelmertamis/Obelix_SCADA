@@ -2,11 +2,11 @@ import time
 from pymodbus.client import ModbusSerialClient
 
 # Configuratie
-PORT = '/dev/ttyUSB0'  # Pas aan als nodig (bijv. "COM3" op Windows)
+PORT = '/dev/ttyUSB0'
 BAUDRATE = 9600
-SLAVE_ID = 1           # Modbus slave-adres
-COIL_ADDRESS = 0       # Coil om te testen
-TIMEOUT = 3            # Timeout in seconden
+SLAVE_ID = 1
+COIL_ADDRESS = 0
+TIMEOUT = 3
 
 # Stel Modbus client in
 client = ModbusSerialClient(
@@ -22,9 +22,8 @@ def log(message):
     timestamp = time.strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
 
-def test_modbus(use_unit=True):
-    keyword = "unit" if use_unit else "slave"
-    log(f"Testen met keyword: {keyword}")
+def test_modbus():
+    log("Start Modbus test...")
     
     # Probeer verbinding te maken
     if not client.connect():
@@ -34,10 +33,12 @@ def test_modbus(use_unit=True):
     log("Verbonden met Modbus device!")
     
     try:
+        # Stel slave ID in (voor oudere pymodbus versies)
+        client.unit_id = SLAVE_ID
+        
         # Lees coil 0
         log(f"Proberen coil {COIL_ADDRESS} te lezen...")
-        kwargs = {keyword: SLAVE_ID}
-        result = client.read_coils(COIL_ADDRESS, 1, **kwargs)
+        result = client.read_coils(COIL_ADDRESS, 1)  # Geen unit/slave
         if result.isError():
             log("Fout bij het lezen van coil: Modbus fout")
         else:
@@ -46,7 +47,7 @@ def test_modbus(use_unit=True):
         
         # Schrijf coil 0 naar True (aan)
         log(f"Proberen coil {COIL_ADDRESS} op True (aan) te zetten...")
-        result = client.write_coil(COIL_ADDRESS, True, **kwargs)
+        result = client.write_coil(COIL_ADDRESS, True)  # Geen unit/slave
         if result.isError():
             log("Fout bij het schrijven van coil: Modbus fout")
         else:
@@ -57,7 +58,7 @@ def test_modbus(use_unit=True):
         
         # Schrijf coil 0 naar False (uit)
         log(f"Proberen coil {COIL_ADDRESS} op False (uit) te zetten...")
-        result = client.write_coil(COIL_ADDRESS, False, **kwargs)
+        result = client.write_coil(COIL_ADDRESS, False)  # Geen unit/slave
         if result.isError():
             log("Fout bij het schrijven van coil: Modbus fout")
         else:
@@ -71,10 +72,4 @@ def test_modbus(use_unit=True):
         log("Verbinding gesloten.")
 
 if __name__ == "__main__":
-    log("Start Modbus test...")
-    # Probeer eerst met 'unit' (correct voor pymodbus 3.9.1)
-    test_modbus(use_unit=True)
-    
-    # Als je wilt testen met 'slave' (voor het geval 'unit' faalt), haal onderstaande commentaar weg
-    log("\nHerhalen met 'slave' keyword...")
-    test_modbus(use_unit=False)
+    test_modbus()
