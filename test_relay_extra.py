@@ -43,6 +43,8 @@ client = ModbusSerialClient(
     stopbits=1,
     bytesize=8
 )
+# Stel het standaard slave-adres in op het client-object
+client.unit = MODBUS_UNIT
 
 fallback_mode = False
 
@@ -67,7 +69,8 @@ def set_relay_state(state):
         return None
     else:
         try:
-            result = client.write_coil(current_coil, state, slave=MODBUS_UNIT)
+            # Roep write_coil aan zonder extra keyword; het slave-adres is al ingesteld
+            result = client.write_coil(current_coil, state)
             if result.isError():
                 add_log(f"Fout bij instellen van relay {current_coil} op {state}.")
             else:
@@ -84,7 +87,7 @@ def toggle_relay():
         return None
     else:
         try:
-            result = client.read_coils(current_coil, 1, slave=MODBUS_UNIT)
+            result = client.read_coils(current_coil, 1)
             if result.isError():
                 add_log("Fout bij het uitlezen van de huidige relay-status.")
                 return None
@@ -101,7 +104,7 @@ def get_coil_status():
         return "Unknown (fallback mode)"
     else:
         try:
-            result = client.read_coils(current_coil, 1, slave=MODBUS_UNIT)
+            result = client.read_coils(current_coil, 1)
             if result.isError():
                 return "Error"
             else:
