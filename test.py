@@ -33,12 +33,12 @@ def test_modbus():
     log("Verbonden met Modbus device!")
     
     try:
-        # Stel slave ID in (voor oudere pymodbus versies)
+        # Stel slave ID in
         client.unit_id = SLAVE_ID
         
         # Lees coil 0
         log(f"Proberen coil {COIL_ADDRESS} te lezen...")
-        result = client.read_coils(COIL_ADDRESS, 1)  # Geen unit/slave
+        result = client.read_coils(COIL_ADDRESS, 1)  # Alleen address en count
         if result.isError():
             log("Fout bij het lezen van coil: Modbus fout")
         else:
@@ -47,7 +47,7 @@ def test_modbus():
         
         # Schrijf coil 0 naar True (aan)
         log(f"Proberen coil {COIL_ADDRESS} op True (aan) te zetten...")
-        result = client.write_coil(COIL_ADDRESS, True)  # Geen unit/slave
+        result = client.write_coil(COIL_ADDRESS, True)  # Alleen address en value
         if result.isError():
             log("Fout bij het schrijven van coil: Modbus fout")
         else:
@@ -58,7 +58,7 @@ def test_modbus():
         
         # Schrijf coil 0 naar False (uit)
         log(f"Proberen coil {COIL_ADDRESS} op False (uit) te zetten...")
-        result = client.write_coil(COIL_ADDRESS, False)  # Geen unit/slave
+        result = client.write_coil(COIL_ADDRESS, False)  # Alleen address en value
         if result.isError():
             log("Fout bij het schrijven van coil: Modbus fout")
         else:
