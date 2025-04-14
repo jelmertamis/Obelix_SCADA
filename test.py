@@ -76,5 +76,5 @@ if __name__ == "__main__":
     test_modbus(use_unit=True)
     
     # Als je wilt testen met 'slave' (voor het geval 'unit' faalt), haal onderstaande commentaar weg
-    # log("\nHerhalen met 'slave' keyword...")
-    # test_modbus(use_unit=False)
+    log("\nHerhalen met 'slave' keyword...")
+    test_modbus(use_unit=False)
