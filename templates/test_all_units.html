@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Relay and Analog Control</title>
+</head>
+<body>
+    <h1>Relay and Analog Control</h1>
+    <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
+    <p>Current Unit: {{ current_unit }}</p>
+    {% if unit_type == 'relay' %}
+        <p>Current Coil: {{ coil_number }}</p>
+        <p>Coil State: {{ status }}</p>
+    {% else %}
+        <p>Current Register: {{ register_number }}</p>
+        <p>Analog Value: {{ status }}</p>
+    {% endif %}
+
+    <h2>Select Unit</h2>
+    <form action="{{ url_for('select_unit') }}" method="post">
+        <label for="unit_index">Unit:</label>
+        <select name="unit_index" id="unit_index">
+            {% for i in range(units|length) %}
+                <option value="{{ i }}" {% if i == current_unit|length %}selected{% endif %}>{{ units[i]['name'] }}</option>
+            {% endfor %}
+        </select>
+        <input type="submit" value="Select Unit">
+    </form>
+
+    {% if unit_type == 'relay' %}
+        <h2>Select Coil</h2>
+        <form action="{{ url_for('update_coil') }}" method="post">
+            <label for="coil_number">Coil Number:</label>
+            <select name="coil_number" id="coil_number">
+                {% for i in range(8) %}
+                    <option value="{{ i }}" {% if i == coil_number %}selected{% endif %}>Coil {{ i }}</option>
+                {% endfor %}
+            </select>
+            <input type="submit" value="Update Coil">
+        </form>
+
+        <h2>Control Relay</h2>
+        <a href="{{ url_for('relay_action', action='on') }}"><button>Turn ON</button></a>
+        <a href="{{ url_for('relay_action', action='off') }}"><button>Turn OFF</button></a>
+        <a href="{{ url_for('relay_action', action='toggle') }}"><button>Toggle</button></a>
+    {% else %}
+        <h2>Select Register</h2>
+        <form action="{{ url_for('update_register') }}" method="post">
+            <label for="register_number">Register Number:</label>
+            <select name="register_number" id="register_number">
+                {% for i in range(10) %}
+                    <option value="{{ i }}" {% if i == register_number %}selected{% endif %}>Register {{ i }}</option>
+                {% endfor %}
+            </select>
+            <input type="submit" value="Update Register">
+        </form>
+    {% endif %}
+
+    <h2>Log Messages</h2>
+    <ul>
+        {% for message in log_messages %}
+            <li>{{ message }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
