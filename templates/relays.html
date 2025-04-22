@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Relay Controls</title>
+  <style>
+    table { border-collapse: collapse; width: 50%; }
+    th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background:#f0f0f0; }
+    button { margin:2px; }
+  </style>
+</head>
+<body>
+  <h1>Relay Controls</h1>
+  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Name</th><th>Slave ID</th><th>State</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+    {% for r in relays %}
+      <tr>
+        <td>{{ r.idx }}</td>
+        <td>{{ r.name }}</td>
+        <td>{{ r.slave_id }}</td>
+        <td>{{ r.state }}</td>
+        <td>
+          <form style="display:inline" method="post" action="{{ url_for('relays') }}">
+            <input type="hidden" name="unit_idx" value="{{ r.idx }}">
+            <input type="hidden" name="action" value="on">
+            <button type="submit">ON</button>
+          </form>
+          <form style="display:inline" method="post" action="{{ url_for('relays') }}">
+            <input type="hidden" name="unit_idx" value="{{ r.idx }}">
+            <input type="hidden" name="action" value="off">
+            <button type="submit">OFF</button>
+          </form>
+          <form style="display:inline" method="post" action="{{ url_for('relays') }}">
+            <input type="hidden" name="unit_idx" value="{{ r.idx }}">
+            <input type="hidden" name="action" value="toggle">
+            <button type="submit">Toggle</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

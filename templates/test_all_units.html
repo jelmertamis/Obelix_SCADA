@@ -1,55 +1,27 @@
 <!DOCTYPE html>
 <html>
-<head><title>Relay &amp; Analog Control</title></head>
+<head>
+  <meta charset="utf-8">
+  <title>Obelix SCADA Dashboard</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    h1 { margin-bottom: 0.5rem; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 0.5rem 0; }
+    a { text-decoration: none; font-size: 1.1rem; color: #006; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
 <body>
-  <h1>Relay &amp; Analog Control</h1>
+  <h1>Obelix SCADA Dashboard</h1>
   <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-  <p>Current Unit: {{ current_unit_name }}</p>
 
-  {% if unit_type == 'relay' %}
-    <p>Coil #{{ coil_number }} — State: {{ status }}</p>
-    <a href="{{ url_for('relay_action', action='on') }}"><button>ON</button></a>
-    <a href="{{ url_for('relay_action', action='off') }}"><button>OFF</button></a>
-    <a href="{{ url_for('relay_action', action='toggle') }}"><button>Toggle</button></a>
-  {% else %}
-    <p>Register #{{ register_number }} — Value: {{ status }}</p>
-  {% endif %}
-
-  <h2>Select Unit</h2>
-  <form method="post" action="{{ url_for('select_unit') }}">
-    <select name="unit_index">
-      {% for u in units %}
-        <option value="{{ loop.index0 }}"
-                {% if loop.index0 == current_unit_index %}selected{% endif %}>
-          {{ u['name'] }}
-        </option>
-      {% endfor %}
-    </select>
-    <button>Go</button>
-  </form>
-
-  <h2>Adjust Addresses</h2>
-  {% if unit_type == 'relay' %}
-    <form method="post" action="{{ url_for('update_coil') }}">
-      <label>Coil #: <input name="coil_number" type="number" value="{{ coil_number }}"></label>
-      <button>Set Coil</button>
-    </form>
-  {% else %}
-    <form method="post" action="{{ url_for('update_register') }}">
-      <label>Register #: <input name="register_number" type="number" value="{{ register_number }}"></label>
-      <button>Set Register</button>
-    </form>
-  {% endif %}
-
-  <p><a href="{{ url_for('sensors') }}">Bekijk alle sensor‑uitlezingen →</a></p>
-  <p><a href="{{ url_for('calibrate') }}">Kalibratie interface →</a></p>
-  <p><a href="{{ url_for('aio') }}">→ EX04AIO I/O interface</a></p>
-
-  <h2>Log</h2>
+  <h2>Module Overzicht</h2>
   <ul>
-    {% for m in log_messages %}
-      <li>{{ m }}</li>
-    {% endfor %}
+    <li>🔌 <a href="{{ url_for('relays') }}">Relay Controls</a></li>
+    <li>📊 <a href="{{ url_for('sensors') }}">Sensor Uitlezingen</a></li>
+    <li>⚙️ <a href="{{ url_for('aio') }}">EX04AIO I/O Interface</a></li>
+    <li>🛠️ <a href="{{ url_for('calibrate') }}">Kalibratie Interface</a></li>
   </ul>
 </body>
 </html>

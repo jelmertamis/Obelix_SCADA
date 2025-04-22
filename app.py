@@ -14,7 +14,7 @@ RS485_PORT = '/dev/ttyUSB0'
 BAUDRATE = 9600
 COIL_ADDRESS = 0
 INPUT_REGISTER_ADDRESS = 0
-DB_FILE = 'settings.db'  # hernoemd van calibration.db
+DB_FILE = 'settings.db'
 
 UNITS = [
     {'slave_id': 1,  'name': 'Relay Module 1',  'type': 'relay'},
@@ -50,7 +50,6 @@ current_unit = 0
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # calibration table
     c.execute('''
         CREATE TABLE IF NOT EXISTS calibration (
             unit_index INTEGER NOT NULL,
@@ -60,7 +59,6 @@ def init_db():
             PRIMARY KEY(unit_index, channel)
         )
     ''')
-    # generic settings table
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
@@ -71,19 +69,14 @@ def init_db():
     conn.close()
 
 def get_calibration(unit_index, channel):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
     c.execute('SELECT scale, offset FROM calibration WHERE unit_index=? AND channel=?',
               (unit_index, channel))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return {'scale': row[0], 'offset': row[1]}
-    return {'scale': 1.0, 'offset': 0.0}
+    row = c.fetchone(); conn.close()
+    return {'scale': row[0], 'offset': row[1]} if row else {'scale': 1.0, 'offset': 0.0}
 
 def set_calibration_db(unit_index, channel, scale, offset):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
     c.execute('''
         INSERT INTO calibration(unit_index, channel, scale, offset)
         VALUES (?, ?, ?, ?)
@@ -91,27 +84,22 @@ def set_calibration_db(unit_index, channel, scale, offset):
             scale=excluded.scale,
             offset=excluded.offset
     ''', (unit_index, channel, scale, offset))
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 def set_setting(key, value):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
     c.execute('''
         INSERT INTO settings(key, value)
         VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET
             value=excluded.value
     ''', (key, str(value)))
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 def get_setting(key, default=None):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
     c.execute('SELECT value FROM settings WHERE key=?', (key,))
-    row = c.fetchone()
-    conn.close()
+    row = c.fetchone(); conn.close()
     return row[0] if row else default
 
 # ----------------------------
@@ -159,9 +147,7 @@ def init_modbus():
 # Relay helpers
 # ----------------------------
 def set_relay_state(state):
-    if fallback_mode:
-        log(f"[FALLBACK] Simuleer relay → {state}")
-        return
+    if fallback_mode: log(f"[FALLBACK] Simuleer relay → {state}"); return
     try:
         clients[current_unit].write_bit(COIL_ADDRESS, state, functioncode=5)
         log(f"Relay gezet op {state}")
@@ -169,9 +155,7 @@ def set_relay_state(state):
         log(f"Fout set_relay_state: {e}")
 
 def toggle_relay():
-    if fallback_mode:
-        log("[FALLBACK] Simuleer toggle relay")
-        return
+    if fallback_mode: log("[FALLBACK] Simuleer toggle"); return
     try:
         cur = clients[current_unit].read_bit(COIL_ADDRESS, functioncode=1)
         set_relay_state(not cur)
@@ -179,80 +163,64 @@ def toggle_relay():
         log(f"Fout toggle_relay: {e}")
 
 def get_coil_status():
-    if fallback_mode:
-        return "Unknown"
+    if fallback_mode: return "Unknown"
     try:
         s = clients[current_unit].read_bit(COIL_ADDRESS, functioncode=1)
         return "ON" if s else "OFF"
     except Exception as e:
-        log(f"Fout get_coil_status: {e}")
-        return "Err"
+        log(f"Fout get_coil_status: {e}"); return "Err"
 
 # ----------------------------
-# Analog helper
+# Analog helpers
 # ----------------------------
 def get_analog_value():
-    if fallback_mode:
-        return "Unknown"
+    if fallback_mode: return "Unknown"
     try:
         return clients[current_unit].read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
     except Exception as e:
-        log(f"Fout get_analog_value: {e}")
-        return "Err"
+        log(f"Fout get_analog_value: {e}"); return "Err"
 
 # ----------------------------
 # AIO helpers
 # ----------------------------
-def read_aio_input(unit_index, channel):
-    return clients[unit_index].read_register(channel, functioncode=4)
-
-def read_aio_output(unit_index, channel):
-    return clients[unit_index].read_register(channel, functioncode=3)
-
-def set_aio_output(unit_index, channel, raw_value):
-    raw = max(0, min(4095, raw_value))
-    clients[unit_index].write_register(channel, raw, functioncode=6)
-    log(f"EX04AIO ch{channel} OUTPUT → raw {raw} (counts)")
+def read_aio_input(i, ch):  return clients[i].read_register(ch, functioncode=4)
+def read_aio_output(i, ch): return clients[i].read_register(ch, functioncode=3)
+def set_aio_output(i, ch, raw):
+    raw = max(0, min(4095, raw))
+    clients[i].write_register(ch, raw, functioncode=6)
+    log(f"EX04AIO ch{ch} OUTPUT → raw {raw}")
 
 # ----------------------------
-# Sensor monitoring (background)
+# Sensor monitor
 # ----------------------------
 def sensor_monitor():
     while True:
         if not fallback_mode:
             readings = []
-            for i, u in enumerate(UNITS):
-                if u['type'] == 'analog':
+            for i,u in enumerate(UNITS):
+                if u['type']=='analog':
                     for ch in range(4):
                         try:
                             raw = clients[i].read_register(ch, functioncode=4)
                             cal = get_calibration(i, ch)
-                            val = raw * cal['scale'] + cal['offset']
+                            val = raw*cal['scale']+cal['offset']
                             readings.append({
-                                'name': u['name'],
-                                'slave_id': u['slave_id'],
-                                'channel': ch,
-                                'raw': raw,
-                                'value': round(val, 2)
+                                'name':u['name'],'slave_id':u['slave_id'],
+                                'channel':ch,'raw':raw,'value':round(val,2)
                             })
-                        except Exception as e:
-                            log(f"Fout sensor {u['name']} ch{ch}: {e}")
+                        except: pass
             socketio.emit('sensor_update', readings, namespace='/sensors')
         eventlet.sleep(2)
 
 # ----------------------------
-# Routes
+# HTTP Routes
 # ----------------------------
 @app.route('/')
 def index():
-    if UNITS[current_unit]['type'] == 'relay':
-        status = get_coil_status()
-    else:
-        status = get_analog_value()
-    return render_template(
-        'test_all_units.html',
+    return render_template('test_all_units.html',
         fallback_mode=fallback_mode,
-        status=status,
+        status=(get_coil_status() if UNITS[current_unit]['type']=='relay'
+                else get_analog_value()),
         coil_number=COIL_ADDRESS,
         register_number=INPUT_REGISTER_ADDRESS,
         current_unit_index=current_unit,
@@ -262,19 +230,30 @@ def index():
         log_messages=log_messages
     )
 
-@app.route('/relay/<action>')
-def relay_action(action):
-    if UNITS[current_unit]['type'] != 'relay':
-        log("Geen relais hier")
-        return redirect(url_for('index'))
-    if action == 'on':
-        set_relay_state(True)
-    elif action == 'off':
-        set_relay_state(False)
-    elif action == 'toggle':
-        toggle_relay()
-    time.sleep(1)
-    return redirect(url_for('index'))
+@app.route('/relays', methods=['GET','POST'])
+def relays():
+    global current_unit
+    if request.method=='POST':
+        unit_idx = int(request.form['unit_idx'])
+        current_unit = unit_idx
+        action = request.form['action']
+        if action=='on':    set_relay_state(True)
+        if action=='off':   set_relay_state(False)
+        if action=='toggle':toggle_relay()
+        time.sleep(0.1)
+        return redirect(url_for('relays'))
+
+    relay_status=[]
+    prev = current_unit
+    for i,u in enumerate(UNITS):
+        if u['type']=='relay':
+            current_unit=i
+            state = get_coil_status()
+            relay_status.append({
+                'idx':i,'name':u['name'],'slave_id':u['slave_id'],'state':state
+            })
+    current_unit = prev
+    return render_template('relays.html', relays=relay_status)
 
 @app.route('/update_coil', methods=['POST'])
 def update_coil():
@@ -301,52 +280,44 @@ def select_unit():
 def sensors():
     return render_template('sensors.html', fallback_mode=fallback_mode)
 
-@app.route('/aio', methods=['GET', 'POST'])
+@app.route('/aio', methods=['GET','POST'])
 def aio():
-    idx = next(i for i, u in enumerate(UNITS) if u['type'] == 'aio')
+    idx = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
     readings = []
-    # laadt opgeslagen setpoints
+    # load saved setpoints
     for ch in range(4):
         saved = get_setting(f"aio_ch{ch}_setpoint", None)
-        readings.append({'channel': ch, 'saved_percent': saved})
+        readings.append({'channel':ch,'saved_percent':saved})
 
-    if request.method == 'POST':
+    if request.method=='POST':
         ch = int(request.form['channel'])
         percent = float(request.form['percent_value'])
-        # procent → mA → raw counts
-        mA = 4.0 + (percent / 100.0) * 16.0
-        raw_counts = int((mA / 20.0) * 4095)
-        set_aio_output(idx, ch, raw_counts)
+        mA = 4.0 + (percent/100.0)*16.0
+        raw = int((mA/20.0)*4095)
+        set_aio_output(idx,ch,raw)
         set_setting(f"aio_ch{ch}_setpoint", percent)
         time.sleep(0.1)
-        # bijwerken in readings
         for r in readings:
-            if r['channel'] == ch:
-                r['saved_percent'] = percent
+            if r['channel']==ch: r['saved_percent']=percent
 
-    # lees hardwarewaarden
     for r in readings:
-        ch = r['channel']
+        ch=r['channel']
         try:
-            raw_in = read_aio_input(idx, ch)
-            raw_out = read_aio_output(idx, ch)
-            cal_in = get_calibration(idx, ch)
-            phys_in = round(raw_in * cal_in['scale'] + cal_in['offset'], 2)
-            phys_out = round((raw_out / 4095.0) * 20.0, 2)
-            percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1) if phys_out > 3.9 else None
+            raw_in  = read_aio_input(idx,ch)
+            raw_out = read_aio_output(idx,ch)
+            cal     = get_calibration(idx,ch)
+            phys_in = round(raw_in*cal['scale']+cal['offset'],2)
+            phys_out= round((raw_out/4095.0)*20.0,2)
+            percent_out = round((phys_out-4.0)/16.0*100.0,1) if phys_out>4.0 else None
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
-            raw_in = raw_out = phys_in = phys_out = percent_out = None
-        r.update({
-            'raw_in': raw_in, 'phys_in': phys_in,
-            'raw_out': raw_out, 'phys_out': phys_out,
-            'percent_out': percent_out
-        })
+            raw_in=raw_out=phys_in=phys_out=percent_out=None
+        r.update({'raw_in':raw_in,'phys_in':phys_in,
+                  'raw_out':raw_out,'phys_out':phys_out,
+                  'percent_out':percent_out})
 
-    return render_template('aio.html',
-                           readings=readings,
-                           unit=UNITS[idx],
-                           fallback_mode=fallback_mode)
+    return render_template('aio.html', readings=readings,
+                           unit=UNITS[idx], fallback_mode=fallback_mode)
 
 @app.route('/calibrate')
 def calibrate():
@@ -357,37 +328,30 @@ def calibrate():
 # ----------------------------
 @socketio.on('connect', namespace='/cal')
 def on_cal_connect():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
     c.execute('SELECT unit_index, channel, scale, offset FROM calibration')
-    all_cal = {f"{r[0]}-{r[1]}": {'scale': r[2], 'offset': r[3]} for r in c.fetchall()}
-    conn.close()
-    emit('init_cal', all_cal)
+    all_cal = {f"{r[0]}-{r[1]}":{'scale':r[2],'offset':r[3]} for r in c.fetchall()}
+    conn.close(); emit('init_cal', all_cal)
 
 # ----------------------------
 # WebSocket Sensors
 # ----------------------------
 @socketio.on('connect', namespace='/sensors')
 def on_sensors_connect():
-    log("Client connected to /sensors namespace")
-    readings = []
-    for i, u in enumerate(UNITS):
-        if u['type'] == 'analog':
+    log("Client connected to /sensors")
+    readings=[]
+    for i,u in enumerate(UNITS):
+        if u['type']=='analog':
             for ch in range(4):
                 try:
-                    raw = (clients[i].read_register(ch, functioncode=4)
-                           if not fallback_mode else None)
-                    cal = get_calibration(i, ch)
-                    val = raw * cal['scale'] + cal['offset'] if raw is not None else None
-                except Exception as e:
-                    log(f"Fout sensor {u['name']} ch{ch}: {e}")
-                    raw = val = None
+                    raw=clients[i].read_register(ch, functioncode=4) if not fallback_mode else None
+                    cal=get_calibration(i,ch)
+                    val=raw*cal['scale']+cal['offset'] if raw is not None else None
+                except: raw=val=None
                 readings.append({
-                    'name': u['name'],
-                    'slave_id': u['slave_id'],
-                    'channel': ch,
-                    'raw': raw,
-                    'value': round(val, 2) if val is not None else None
+                    'name':u['name'],'slave_id':u['slave_id'],
+                    'channel':ch,'raw':raw,
+                    'value':round(val,2) if val is not None else None
                 })
     emit('sensor_update', readings)
 
