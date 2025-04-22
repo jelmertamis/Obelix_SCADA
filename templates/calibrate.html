@@ -12,7 +12,6 @@
     input[type=number] { width:4em; }
     button {
       padding:0.3rem 0.6rem;
-      margin:0;
       font-size:0.9rem;
       border:none;
       border-radius:4px;
@@ -46,23 +45,19 @@
     <tbody>
       {% for i in range(units|length) %}
         {% if units[i]['type']=='analog' %}
-        {% for ch in range(4) %}
-        <tr data-unit="{{ i }}" data-channel="{{ ch }}">
-          <td>{{ units[i]['name'] }}</td>
-          <td>{{ units[i]['slave_id'] }}</td>
-          <td>{{ ch }}</td>
-          <td>
-            <input type="number" step="0.1" class="minVal" placeholder="bv. 0.0">
-          </td>
-          <td>
-            <input type="number" step="0.1" class="maxVal" placeholder="bv. 120.0">
-          </td>
-          <td class="slope">—</td>
-          <td class="offset">—</td>
-          <td><button class="saveBtn">Opslaan</button></td>
-          <td class="feedback"></td>
-        </tr>
-        {% endfor %}
+          {% for ch in range(4) %}
+          <tr data-unit="{{ i }}" data-channel="{{ ch }}">
+            <td>{{ units[i]['name'] }}</td>
+            <td>{{ units[i]['slave_id'] }}</td>
+            <td>{{ ch }}</td>
+            <td><input type="number" step="0.1" class="minVal" placeholder="0.0"></td>
+            <td><input type="number" step="0.1" class="maxVal" placeholder="120.0"></td>
+            <td class="slope">—</td>
+            <td class="offset">—</td>
+            <td><button class="saveBtn">Opslaan</button></td>
+            <td class="feedback"></td>
+          </tr>
+          {% endfor %}
         {% endif %}
       {% endfor %}
     </tbody>
@@ -70,66 +65,75 @@
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
+    const RAW1 = 819;    // raw voor 4 mA
+    const RAW2 = 4095;   // raw voor 20 mA
     const socket = io('/cal');
 
-    // Als de pagina laadt: init_cal met bestaande cal-waarden
+    // Zodra we init_cal ontvangen, vullen we slope/offset én berekende ranges
     socket.on('init_cal', data => {
-      // data heeft keys als "unit-channel": {scale,offset}
       document.querySelectorAll('tbody tr').forEach(row => {
-        const u = row.getAttribute('data-unit'),
-              c = row.getAttribute('data-channel'),
-              key = `${u}-${c}`;
+        const unit    = row.dataset.unit;
+        const channel = row.dataset.channel;
+        const key     = `${unit}-${channel}`;
         if (data[key]) {
-          row.querySelector('.slope').textContent  = data[key].scale.toFixed(4);
-          row.querySelector('.offset').textContent = data[key].offset.toFixed(2);
+          const { scale, offset } = data[key];
+          // toon slope & offset
+          row.querySelector('.slope').textContent  = scale.toFixed(4);
+          row.querySelector('.offset').textContent = offset.toFixed(2);
+          // bereken en vul min/max
+          row.querySelector('.minVal').value = (scale*RAW1 + offset).toFixed(2);
+          row.querySelector('.maxVal').value = (scale*RAW2 + offset).toFixed(2);
         }
       });
     });
 
-    // Na opslaan: update één rij
-    socket.on('cal_saved', info => {
-      const sel = `tr[data-unit="${info.unit}"][data-channel="${info.channel}"]`;
-      const row = document.querySelector(sel);
-      row.querySelector('.slope').textContent    = info.scale.toFixed(4);
-      row.querySelector('.offset').textContent   = info.offset.toFixed(2);
-      const fb = row.querySelector('.feedback');
-      fb.textContent      = '✔︎ Opslaan gelukt';
-      fb.className        = 'feedback status';
-      setTimeout(() => fb.textContent = '', 3000);
-    });
-
-    socket.on('cal_error', err => {
-      // We vinden welke rij het was aan de hand van err heeft geen unit/channel
-      // Dus simpelweg tonen onder de hele tabel:
-      alert('Kalibratie fout: ' + err.error);
-    });
-
-    // Button-handler per rij
+    // Afhandelen van opslaan per rij
     document.querySelectorAll('.saveBtn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const row     = btn.closest('tr');
-        const unit    = +row.getAttribute('data-unit');
-        const channel = +row.getAttribute('data-channel');
-        const phys1   = parseFloat(row.querySelector('.minVal').value);
-        const phys2   = parseFloat(row.querySelector('.maxVal').value);
+        const row      = btn.closest('tr');
+        const unit     = parseInt(row.dataset.unit);
+        const channel  = parseInt(row.dataset.channel);
+        const phys1    = parseFloat(row.querySelector('.minVal').value);
+        const phys2    = parseFloat(row.querySelector('.maxVal').value);
+        const feedback = row.querySelector('.feedback');
+
+        // Validatie
         if (isNaN(phys1) || isNaN(phys2)) {
-          row.querySelector('.feedback').textContent = 'Vul beide waarden in';
-          row.querySelector('.feedback').className = 'feedback error';
+          feedback.textContent = 'Vul beide waarden in';
+          feedback.className = 'feedback error';
           return;
         }
-        // vaststaande raw-waarden voor 4mA→20mA
+        feedback.textContent = '';
+
+        // Verzenden
         socket.emit('set_cal_points', {
           unit:    unit,
           channel: channel,
-          raw1:    819,
+          raw1:    RAW1,
           phys1:   phys1,
-          raw2:    4095,
+          raw2:    RAW2,
           phys2:   phys2
         });
       });
     });
 
-    // Vraag init_cal aan zodra verbonden
+    // Na succesvolle opslag, update slope/offset en geef feedback
+    socket.on('cal_saved', info => {
+      const sel = `tr[data-unit="${info.unit}"][data-channel="${info.channel}"]`;
+      const row = document.querySelector(sel);
+      row.querySelector('.slope').textContent  = info.scale.toFixed(4);
+      row.querySelector('.offset').textContent = info.offset.toFixed(2);
+      const fb = row.querySelector('.feedback');
+      fb.textContent = '✔ Opgeslagen';
+      fb.className = 'feedback status';
+      setTimeout(() => fb.textContent = '', 3000);
+    });
+
+    socket.on('cal_error', err => {
+      alert('Fout bij kalibratie: ' + err.error);
+    });
+
+    // Vraag bij laden en connect initiële kalibraties op
     socket.emit('init_cal');
   </script>
 </body>
