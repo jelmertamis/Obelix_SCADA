@@ -6,7 +6,8 @@
 <body>
   <h1>Relay &amp; Analog Control</h1>
   <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-  <p>Current Unit: {{ units[current_unit].name }}</p>
+  <!-- Pas hier: gebruik dict-toegang -->
+  <p>Current Unit: {{ units[current_unit]['name'] }}</p>
 
   {% if unit_type == 'relay' %}
     <p>Coil #{{ coil_number }} — State: {{ status }}</p>
@@ -23,7 +24,7 @@
       {% for u in units %}
         <option value="{{ loop.index0 }}"
                 {% if loop.index0 == current_unit %}selected{% endif %}>
-          {{ u.name }}
+          {{ u['name'] }}
         </option>
       {% endfor %}
     </select>
