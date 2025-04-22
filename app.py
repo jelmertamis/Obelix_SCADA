@@ -14,7 +14,7 @@ RS485_PORT = '/dev/ttyUSB0'
 BAUDRATE = 9600
 COIL_ADDRESS = 0
 INPUT_REGISTER_ADDRESS = 0
-DB_FILE = 'calibration.db'
+DB_FILE = 'settings.db'  # hernoemd van calibration.db
 
 UNITS = [
     {'slave_id': 1,  'name': 'Relay Module 1',  'type': 'relay'},
@@ -50,6 +50,7 @@ current_unit = 0
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    # calibration table
     c.execute('''
         CREATE TABLE IF NOT EXISTS calibration (
             unit_index INTEGER NOT NULL,
@@ -57,6 +58,13 @@ def init_db():
             scale      REAL    NOT NULL,
             offset     REAL    NOT NULL,
             PRIMARY KEY(unit_index, channel)
+        )
+    ''')
+    # generic settings table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         )
     ''')
     conn.commit()
@@ -71,8 +79,7 @@ def get_calibration(unit_index, channel):
     conn.close()
     if row:
         return {'scale': row[0], 'offset': row[1]}
-    else:
-        return {'scale': 1.0, 'offset': 0.0}
+    return {'scale': 1.0, 'offset': 0.0}
 
 def set_calibration_db(unit_index, channel, scale, offset):
     conn = sqlite3.connect(DB_FILE)
@@ -86,6 +93,26 @@ def set_calibration_db(unit_index, channel, scale, offset):
     ''', (unit_index, channel, scale, offset))
     conn.commit()
     conn.close()
+
+def set_setting(key, value):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO settings(key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value=excluded.value
+    ''', (key, str(value)))
+    conn.commit()
+    conn.close()
+
+def get_setting(key, default=None):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT value FROM settings WHERE key=?', (key,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else default
 
 # ----------------------------
 # Logging helper
@@ -106,7 +133,6 @@ def init_modbus():
     global fallback_mode, clients
     clients = []
     success = True
-
     for u in UNITS:
         client = minimalmodbus.Instrument(RS485_PORT, u['slave_id'], mode='rtu')
         client.serial.baudrate  = BAUDRATE
@@ -115,7 +141,6 @@ def init_modbus():
         client.serial.bytesize  = 8
         client.serial.timeout   = 3
         clients.append(client)
-
     for i, u in enumerate(UNITS):
         try:
             if u['type'] == 'relay':
@@ -128,7 +153,6 @@ def init_modbus():
         except Exception as e:
             log(f"Modbus init fout voor {u['name']} (ID {u['slave_id']}): {e}")
             success = False
-
     fallback_mode = not success
 
 # ----------------------------
@@ -279,40 +303,46 @@ def sensors():
 
 @app.route('/aio', methods=['GET', 'POST'])
 def aio():
-    idx = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
+    idx = next(i for i, u in enumerate(UNITS) if u['type'] == 'aio')
     readings = []
-    if request.method == 'POST':
-        ch   = int(request.form['channel'])
-        percent = float(request.form['percent_value'])  # in %
-        # stap 1: % → mA
-        mA = 4.0 + (percent / 100.0) * (20.0 - 4.0)
-        # stap 2: mA → raw (0..4095)
-        raw_counts = int((mA / 20.0) * 4095)
-
-        set_aio_output(idx, ch, raw_counts)
-        time.sleep(0.1)
+    # laadt opgeslagen setpoints
     for ch in range(4):
+        saved = get_setting(f"aio_ch{ch}_setpoint", None)
+        readings.append({'channel': ch, 'saved_percent': saved})
+
+    if request.method == 'POST':
+        ch = int(request.form['channel'])
+        percent = float(request.form['percent_value'])
+        # procent → mA → raw counts
+        mA = 4.0 + (percent / 100.0) * 16.0
+        raw_counts = int((mA / 20.0) * 4095)
+        set_aio_output(idx, ch, raw_counts)
+        set_setting(f"aio_ch{ch}_setpoint", percent)
+        time.sleep(0.1)
+        # bijwerken in readings
+        for r in readings:
+            if r['channel'] == ch:
+                r['saved_percent'] = percent
+
+    # lees hardwarewaarden
+    for r in readings:
+        ch = r['channel']
         try:
-            raw_in   = read_aio_input(idx, ch)
-            raw_out  = read_aio_output(idx, ch)
-            cal_in   = get_calibration(idx, ch)
-            phys_in  = round(raw_in  * cal_in['scale']  + cal_in['offset'], 2)
+            raw_in = read_aio_input(idx, ch)
+            raw_out = read_aio_output(idx, ch)
+            cal_in = get_calibration(idx, ch)
+            phys_in = round(raw_in * cal_in['scale'] + cal_in['offset'], 2)
             phys_out = round((raw_out / 4095.0) * 20.0, 2)
-            if phys_out > 3.99:
-                percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1)
-            else:
-                percent_out = None
+            percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1) if phys_out > 4.0 else None
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
-            raw_in = raw_out = phys_in = phys_out = None
-        readings.append({  
-            'channel':  ch,
-            'raw_in':   raw_in,
-            'phys_in':  phys_in,
-            'raw_out':  raw_out,
-            'phys_out': phys_out,
-            'percent_out': percent_out   # %
+            raw_in = raw_out = phys_in = phys_out = percent_out = None
+        r.update({
+            'raw_in': raw_in, 'phys_in': phys_in,
+            'raw_out': raw_out, 'phys_out': phys_out,
+            'percent_out': percent_out
         })
+
     return render_template('aio.html',
                            readings=readings,
                            unit=UNITS[idx],
@@ -345,7 +375,8 @@ def on_sensors_connect():
         if u['type'] == 'analog':
             for ch in range(4):
                 try:
-                    raw = clients[i].read_register(ch, functioncode=4) if not fallback_mode else None
+                    raw = (clients[i].read_register(ch, functioncode=4)
+                           if not fallback_mode else None)
                     cal = get_calibration(i, ch)
                     val = raw * cal['scale'] + cal['offset'] if raw is not None else None
                 except Exception as e:
