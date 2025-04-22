@@ -25,9 +25,11 @@
     <label>
       Module:
       <select id="unitSelect">
-        {% for i,u in enumerate(units) %}
-          {% if u.type == 'analog' %}
-            <option value="{{ i }}">{{ u.name }} (ID {{ u.slave_id }})</option>
+        {% for i in range(units|length) %}
+          {% if units[i]['type'] == 'analog' %}
+            <option value="{{ i }}">
+              {{ units[i]['name'] }} (ID {{ units[i]['slave_id'] }})
+            </option>
           {% endif %}
         {% endfor %}
       </select>
@@ -43,7 +45,7 @@
 
     <table>
       <thead>
-        <tr><th>Kalibreer‐punt</th><th>Raw</th><th>Physieke waarde</th><th>Actie</th></tr>
+        <tr><th>Kalibreer‑punt</th><th>Raw</th><th>Physieke waarde</th><th>Actie</th></tr>
       </thead>
       <tbody>
         <tr class="point-row">
@@ -84,7 +86,8 @@
     }
 
     socket.on('raw_value', msg => {
-      document.getElementById('raw'+msg.point).textContent = msg.raw != null ? msg.raw : 'Err';
+      document.getElementById('raw'+msg.point).textContent =
+        msg.raw != null ? msg.raw : 'Err';
     });
 
     document.getElementById('read1').addEventListener('click', () => readRaw(1));
@@ -103,14 +106,15 @@
     });
 
     socket.on('cal_saved', info => {
-      document.getElementById('statusMsg').textContent = 
+      document.getElementById('statusMsg').textContent =
         `Kalibratie opgeslagen (module ${info.unit}, kanaal ${info.channel}): ` +
         `scale=${info.scale.toFixed(4)}, offset=${info.offset.toFixed(2)}`;
       document.getElementById('statusMsg').style.display = 'block';
     });
 
     socket.on('cal_error', err => {
-      document.getElementById('errorMsg').textContent = `Fout bij kalibratie: ${err.error}`;
+      document.getElementById('errorMsg').textContent =
+        `Fout bij kalibratie: ${err.error}`;
       document.getElementById('errorMsg').style.display = 'block';
     });
   </script>
