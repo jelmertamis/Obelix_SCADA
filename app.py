@@ -310,11 +310,12 @@ def on_get_raw(data):
 def on_set_cal_points(data):
     try:
         unit, ch = data['unit'], data['channel']
+        slave_id = UNITS[unit]['slave_id']
         raw1, phys1 = data['raw1'], data['phys1']
         raw2, phys2 = data['raw2'], data['phys2']
         scale, offset = calculate_calibration(raw1, phys1, raw2, phys2)
         set_calibration_db(unit, ch, scale, offset)
-        log(f"Kalibratie opgeslagen voor unit {unit}, kanaal {ch}: scale={scale}, offset={offset}")
+        log(f"Kalibratie opgeslagen voor ID {slave_id}, kanaal {ch}: scale={scale}, offset={offset}")
         emit('cal_saved', {'unit': unit, 'channel': ch, 'scale': scale, 'offset': offset})
     except Exception as e:
         emit('cal_error', {'unit': data['unit'], 'channel': data['channel'], 'error': str(e)})
