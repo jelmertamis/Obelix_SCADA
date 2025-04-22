@@ -1,37 +1,33 @@
+<!-- templates/sensors.html -->
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Analog Sensors</title>
-    <meta http-equiv="refresh" content="10">
-    <style>
-      table { border-collapse: collapse; width: 60%; }
-      th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-      th { background: #f0f0f0; }
-    </style>
+  <title>Analog Sensors</title>
+  <meta http-equiv="refresh" content="10">
+  <style>
+    table{border-collapse:collapse;width:60%}
+    th,td{border:1px solid #ccc;padding:8px;text-align:left}
+    th{background:#f0f0f0}
+  </style>
 </head>
 <body>
-    <h1>Analog Sensor Uitlezingen</h1>
-    <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Unit</th>
-                <th>Slave ID</th>
-                <th>Kanaal</th>
-                <th>Waarde</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for sensor in readings %}
-            <tr>
-                <td>{{ sensor.name }}</td>
-                <td>{{ sensor.slave_id }}</td>
-                <td>{{ sensor.channel }}</td>
-                <td>{{ sensor.value }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <p><a href="{{ url_for('index') }}">← Terug naar overzicht</a></p>
+  <h1>Analog Sensor Uitlezingen</h1>
+  <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
+  <table>
+    <thead>
+      <tr><th>Unit</th><th>Slave ID</th><th>Channel</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+      {% for s in readings %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.slave_id }}</td>
+        <td>{{ s.channel }}</td>
+        <td>{{ s.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p><a href="{{ url_for('index') }}">← Terug</a></p>
 </body>
 </html>

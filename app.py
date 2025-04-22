@@ -1,0 +1,288 @@
+# app.py
+import os
+import sqlite3
+import time
+
+from flask import Flask, render_template, redirect, url_for, request
+from flask_socketio import SocketIO, emit
+import minimalmodbus
+
+# ----------------------------
+# Configuratie
+# ----------------------------
+RS485_PORT = '/dev/ttyUSB0'
+BAUDRATE = 9600
+COIL_ADDRESS = 0
+INPUT_REGISTER_ADDRESS = 0
+DB_FILE = 'calibration.db'
+
+UNITS = [
+    {'slave_id': 1, 'name': 'Relay Module 1', 'type': 'relay'},
+    {'slave_id': 2, 'name': 'Relay Module 2', 'type': 'relay'},
+    {'slave_id': 3, 'name': 'Relay Module 3', 'type': 'relay'},
+    {'slave_id': 4, 'name': 'Relay Module 4', 'type': 'relay'},
+    {'slave_id': 5, 'name': 'Analog Input 1', 'type': 'analog'},
+    {'slave_id': 6, 'name': 'Analog Input 2', 'type': 'analog'},
+    {'slave_id': 7, 'name': 'Analog Input 3', 'type': 'analog'},
+    {'slave_id': 8, 'name': 'Analog Input 4', 'type': 'analog'},
+    {'slave_id': 9, 'name': 'EX1608DD',      'type': 'relay'},
+]
+
+# ----------------------------
+# App & SocketIO setup
+# ----------------------------
+app = Flask(__name__)
+socketio = SocketIO(app, async_mode='eventlet')
+
+# ----------------------------
+# Globals
+# ----------------------------
+clients = []
+fallback_mode = False
+log_messages = []
+MAX_LOG_MESSAGES = 20
+
+# ----------------------------
+# Database helpers
+# ----------------------------
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS calibration (
+            unit_index INTEGER NOT NULL,
+            channel    INTEGER NOT NULL,
+            scale      REAL    NOT NULL,
+            offset     REAL    NOT NULL,
+            PRIMARY KEY (unit_index, channel)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_calibration(unit_index, channel):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        SELECT scale, offset FROM calibration
+        WHERE unit_index = ? AND channel = ?
+    ''', (unit_index, channel))
+    row = c.fetchone()
+    conn.close()
+    return {'scale': row[0], 'offset': row[1]} if row else {'scale':1.0, 'offset':0.0}
+
+def set_calibration_db(unit_index, channel, scale, offset):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO calibration (unit_index, channel, scale, offset)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(unit_index, channel) DO UPDATE SET
+            scale=excluded.scale,
+            offset=excluded.offset
+    ''', (unit_index, channel, scale, offset))
+    conn.commit()
+    conn.close()
+
+# ----------------------------
+# Logging helper
+# ----------------------------
+def log(message):
+    global log_messages
+    timestamp = time.strftime("%H:%M:%S")
+    entry = f"[{timestamp}] {message}"
+    log_messages.append(entry)
+    if len(log_messages) > MAX_LOG_MESSAGES:
+        log_messages = log_messages[-MAX_LOG_MESSAGES:]
+    print(entry)
+
+# ----------------------------
+# Modbus init
+# ----------------------------
+def init_modbus():
+    global fallback_mode
+    try:
+        for unit in UNITS:
+            client = minimalmodbus.Instrument(RS485_PORT, unit['slave_id'], mode='rtu')
+            client.serial.baudrate = BAUDRATE
+            client.serial.parity   = minimalmodbus.serial.PARITY_EVEN
+            client.serial.stopbits = 1
+            client.serial.bytesize = 8
+            client.serial.timeout  = 3
+            clients.append(client)
+        # test elke client
+        for i, unit in enumerate(UNITS):
+            if unit['type']=='relay':
+                clients[i].read_bit(COIL_ADDRESS, functioncode=1)
+            else:
+                clients[i].read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
+            log(f"Modbus OK voor {unit['name']} (ID {unit['slave_id']})")
+        fallback_mode = False
+    except Exception as e:
+        log(f"Modbus init fout: {e} → fallback aan")
+        fallback_mode = True
+
+# ----------------------------
+# Relay functies
+# ----------------------------
+def set_relay_state(state):
+    if fallback_mode:
+        log(f"[FALLBACK] Simuleer relay → {state}")
+        return
+    try:
+        clients[current_unit].write_bit(COIL_ADDRESS, state, functioncode=5)
+        log(f"Relay gezet op {state}")
+    except Exception as e:
+        log(f"Fout set_relay_state: {e}")
+
+def toggle_relay():
+    if fallback_mode:
+        log("[FALLBACK] Simuleer toggle relay")
+        return
+    try:
+        cur = clients[current_unit].read_bit(COIL_ADDRESS, functioncode=1)
+        new = not cur
+        set_relay_state(new)
+    except Exception as e:
+        log(f"Fout toggle_relay: {e}")
+
+def get_coil_status():
+    if fallback_mode:
+        return "Unknown"
+    try:
+        s = clients[current_unit].read_bit(COIL_ADDRESS, functioncode=1)
+        return "ON" if s else "OFF"
+    except Exception as e:
+        log(f"Fout get_coil_status: {e}")
+        return "Err"
+
+# ----------------------------
+# Analoge waarden
+# ----------------------------
+def get_analog_value():
+    if fallback_mode:
+        return "Unknown"
+    try:
+        return clients[current_unit].read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
+    except Exception as e:
+        log(f"Fout get_analog_value: {e}")
+        return "Err"
+
+# ----------------------------
+# Routes
+# ----------------------------
+@app.route('/')
+def index():
+    if UNITS[current_unit]['type']=='relay':
+        status = get_coil_status()
+    else:
+        status = get_analog_value()
+    return render_template('test_all_units.html',
+        fallback_mode=fallback_mode,
+        status=status,
+        coil_number=COIL_ADDRESS,
+        register_number=INPUT_REGISTER_ADDRESS,
+        current_unit=UNITS[current_unit]['name'],
+        unit_type=UNITS[current_unit]['type'],
+        units=UNITS,
+        log_messages=log_messages
+    )
+
+@app.route('/relay/<action>')
+def relay_action(action):
+    if UNITS[current_unit]['type']!='relay':
+        log("Geen relais hier")
+        return redirect(url_for('index'))
+    if action=='on':  set_relay_state(True)
+    if action=='off': set_relay_state(False)
+    if action=='toggle': toggle_relay()
+    time.sleep(1)
+    return redirect(url_for('index'))
+
+@app.route('/update_coil', methods=['POST'])
+def update_coil():
+    global COIL_ADDRESS
+    COIL_ADDRESS = int(request.form['coil_number'])
+    log(f"Set COIL_ADDRESS={COIL_ADDRESS}")
+    return redirect(url_for('index'))
+
+@app.route('/update_register', methods=['POST'])
+def update_register():
+    global INPUT_REGISTER_ADDRESS
+    INPUT_REGISTER_ADDRESS = int(request.form['register_number'])
+    log(f"Set REGISTER_ADDRESS={INPUT_REGISTER_ADDRESS}")
+    return redirect(url_for('index'))
+
+@app.route('/select_unit', methods=['POST'])
+def select_unit():
+    global current_unit
+    current_unit = int(request.form['unit_index'])
+    log(f"Select unit {UNITS[current_unit]['name']}")
+    return redirect(url_for('index'))
+
+@app.route('/sensors')
+def sensors():
+    readings = []
+    for i, unit in enumerate(UNITS):
+        if unit['type']=='analog':
+            for ch in range(4):
+                try:
+                    if fallback_mode:
+                        val = "Unknown"
+                    else:
+                        val = clients[i].read_register(ch, functioncode=4)
+                    log(f"Lezen {unit['name']} ch{ch} → {val}")
+                except Exception as e:
+                    val = f"Err: {e}"
+                    log(f"Fout sensor {unit['name']} ch{ch}: {e}")
+                readings.append({
+                    'name': unit['name'],
+                    'slave_id': unit['slave_id'],
+                    'channel': ch,
+                    'value': val
+                })
+    return render_template('sensors.html',
+        readings=readings,
+        fallback_mode=fallback_mode
+    )
+
+@app.route('/calibrate')
+def calibrate():
+    return render_template('calibrate.html', units=UNITS)
+
+# ----------------------------
+# WebSocket voor kalibratie
+# ----------------------------
+@socketio.on('connect', namespace='/cal')
+def on_connect():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT unit_index, channel, scale, offset FROM calibration')
+    all_cal = {f"{r[0]}-{r[1]}": {'scale':r[2], 'offset':r[3]} for r in c.fetchall()}
+    conn.close()
+    emit('init_cal', all_cal)
+
+@socketio.on('get_raw', namespace='/cal')
+def on_get_raw(data):
+    i, ch = data['unit_index'], data['channel']
+    try:
+        raw = clients[i].read_register(ch, functioncode=4)
+    except:
+        raw = None
+    emit('raw_value', {'unit':i, 'channel':ch, 'raw':raw})
+
+@socketio.on('set_cal', namespace='/cal')
+def on_set_cal(data):
+    set_calibration_db(data['unit'], data['channel'], data['scale'], data['offset'])
+    emit('cal_saved', {'unit':data['unit'], 'channel':data['channel']})
+
+# ----------------------------
+# Main
+# ----------------------------
+if __name__ == '__main__':
+    init_db()
+    init_modbus()
+    # default unit
+    global current_unit
+    current_unit = 0
+    socketio.run(app, host='0.0.0.0', port=5001)
