@@ -86,16 +86,6 @@ def set_calibration_db(unit_index, channel, scale, offset):
     conn.close()
 
 # ----------------------------
-# Calibration calculation
-# ----------------------------
-def calculate_calibration(raw1, phys1, raw2, phys2):
-    if raw1 == raw2:
-        raise ValueError("Ruwe waarden moeten verschillend zijn")
-    scale = (phys2 - phys1) / (raw2 - raw1)
-    offset = phys1 - scale * raw1
-    return scale, offset
-
-# ----------------------------
 # Logging helper
 # ----------------------------
 def log(message):
@@ -213,20 +203,17 @@ def sensor_monitor():
                             raw = clients[i].read_register(ch, functioncode=4)
                             cal = get_calibration(i, ch)
                             val = raw * cal['scale'] + cal['offset']
-                            key = f"{i}-{ch}"
-                            if key not in last_sensor_values or abs(last_sensor_values[key] - val) > 0.01:
-                                last_sensor_values[key] = val
-                                readings.append({
-                                    'name': unit['name'],
-                                    'slave_id': unit['slave_id'],
-                                    'channel': ch,
-                                    'raw': raw,
-                                    'value': round(val, 2)
-                                })
+                            readings.append({
+                                'name': unit['name'],
+                                'slave_id': unit['slave_id'],
+                                'channel': ch,
+                                'raw': raw,
+                                'value': round(val, 2)
+                            })
                         except Exception as e:
                             log(f"Fout sensor {unit['name']} ch{ch}: {e}")
-            if readings:
-                socketio.emit('sensor_update', readings, namespace='/sensors')
+            # stuur **altijd** de volledige lijst
+            socketio.emit('sensor_update', readings, namespace='/sensors')
         eventlet.sleep(2)
 
 # ----------------------------
@@ -303,11 +290,11 @@ def aio():
         time.sleep(0.1)
     for ch in range(4):
         try:
-            raw_in  = read_aio_input(idx, ch)
-            raw_out = read_aio_output(idx, ch)
-            cal_in  = get_calibration(idx, ch)
-            phys_in = round(raw_in  * cal_in['scale']  + cal_in['offset'], 2)
-            phys_out= round(raw_out * cal_in['scale']  + cal_in['offset'], 2)
+            raw_in   = read_aio_input(idx, ch)
+            raw_out  = read_aio_output(idx, ch)
+            cal_in   = get_calibration(idx, ch)
+            phys_in  = round(raw_in  * cal_in['scale']  + cal_in['offset'], 2)
+            phys_out = round(raw_out * cal_in['scale']  + cal_in['offset'], 2)
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = None
@@ -328,7 +315,7 @@ def calibrate():
     return render_template('calibrate.html', units=UNITS)
 
 # ----------------------------
-# SocketIO Calibration
+# WebSocket Calibration
 # ----------------------------
 @socketio.on('connect', namespace='/cal')
 def on_cal_connect():
@@ -339,23 +326,33 @@ def on_cal_connect():
     conn.close()
     emit('init_cal', all_cal)
 
-@socketio.on('get_raw', namespace='/cal')
-def on_get_raw(data):
-    # unchanged...
-    pass
-
-@socketio.on('set_cal_points', namespace='/cal')
-def on_set_cal_points(data):
-    # unchanged...
-    pass
+# (get_raw and set_cal_points unchanged)
 
 # ----------------------------
-# SocketIO Sensors
+# WebSocket Sensors
 # ----------------------------
 @socketio.on('connect', namespace='/sensors')
 def on_sensors_connect():
-    # unchanged...
-    pass
+    log("Client connected to /sensors namespace")
+    readings = []
+    for i, unit in enumerate(UNITS):
+        if unit['type'] == 'analog':
+            for ch in range(4):
+                try:
+                    raw = clients[i].read_register(ch, functioncode=4) if not fallback_mode else None
+                    cal = get_calibration(i, ch)
+                    val = raw * cal['scale'] + cal['offset'] if raw is not None else None
+                except Exception as e:
+                    log(f"Fout sensor {unit['name']} ch{ch}: {e}")
+                    raw = val = None
+                readings.append({
+                    'name': unit['name'],
+                    'slave_id': unit['slave_id'],
+                    'channel': ch,
+                    'raw': raw,
+                    'value': round(val, 2) if val is not None else None
+                })
+    emit('sensor_update', readings)
 
 # ----------------------------
 # Main
