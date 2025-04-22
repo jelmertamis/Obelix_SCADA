@@ -2,31 +2,54 @@
 <html>
 <head>
   <title>Analog Sensors</title>
-  <meta http-equiv="refresh" content="10">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.3/socket.io.min.js"></script>
   <style>
-    table { border-collapse:collapse; width:60% }
-    th, td { border:1px solid #ccc; padding:8px; text-align:left }
-    th { background:#f0f0f0 }
+    table { border-collapse: collapse; width: 60% }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left }
+    th { background: #f0f0f0 }
   </style>
 </head>
 <body>
   <h1>Analog Sensor Uitlezingen</h1>
   <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-  <table>
+  <table id="sensor-table">
     <thead>
       <tr><th>Unit</th><th>Slave ID</th><th>Channel</th><th>Value</th></tr>
     </thead>
-    <tbody>
-      {% for s in readings %}
-      <tr>
-        <td>{{ s.name }}</td>
-        <td>{{ s.slave_id }}</td>
-        <td>{{ s.channel }}</td>
-        <td>{{ s.value }}</td>
-      </tr>
-      {% endfor %}
+    <tbody id="sensor-body">
+      <!-- Populated by JavaScript -->
     </tbody>
   </table>
   <p><a href="{{ url_for('index') }}">← Terug</a></p>
+
+  <script>
+    const socket = io('/sensors');
+
+    // Initialize table with sensor data
+    socket.on('sensor_update', function(readings) {
+      const tbody = document.getElementById('sensor-body');
+      // Create a map of existing rows for efficient updates
+      const rowMap = {};
+      for (let row of tbody.children) {
+        const key = `${row.cells[1].textContent}-${row.cells[2].textContent}`;
+        rowMap[key] = row;
+      }
+
+      // Update or add rows
+      readings.forEach(s => {
+        const key = `${s.slave_id}-${s.channel}`;
+        const row = rowMap[key] || document.createElement('tr');
+        row.innerHTML = `
+          <td>${s.name}</td>
+          <td>${s.slave_id}</td>
+          <td>${s.channel}</td>
+          <td>${s.value}</td>
+        `;
+        if (!rowMap[key]) {
+          tbody.appendChild(row);
+        }
+      });
+    });
+  </script>
 </body>
 </html>

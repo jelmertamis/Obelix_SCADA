@@ -1,6 +1,8 @@
 import os
 import sqlite3
 import time
+import threading
+import eventlet
 
 from flask import Flask, render_template, redirect, url_for, request
 from flask_socketio import SocketIO, emit
@@ -40,6 +42,8 @@ clients = []
 fallback_mode = False
 log_messages = []
 MAX_LOG_MESSAGES = 20
+current_unit = 0
+last_sensor_values = {}  # Track last known sensor values
 
 # ----------------------------
 # Database helpers
@@ -66,7 +70,7 @@ def get_calibration(unit_index, channel):
               (unit_index, channel))
     row = c.fetchone()
     conn.close()
-    return {'scale': row[0], 'offset': row[1]} if row else {'scale':1.0, 'offset':0.0}
+    return {'scale': row[0], 'offset': row[1]} if row else {'scale': 1.0, 'offset': 0.0}
 
 def set_calibration_db(unit_index, channel, scale, offset):
     conn = sqlite3.connect(DB_FILE)
@@ -107,9 +111,9 @@ def init_modbus():
             client.serial.bytesize = 8
             client.serial.timeout  = 3
             clients.append(client)
-        # test elke client
+        # Test elke client
         for i, unit in enumerate(UNITS):
-            if unit['type']=='relay':
+            if unit['type'] == 'relay':
                 clients[i].read_bit(COIL_ADDRESS, functioncode=1)
             else:
                 clients[i].read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
@@ -165,11 +169,43 @@ def get_analog_value():
         return "Err"
 
 # ----------------------------
+# Sensor monitoring background task
+# ----------------------------
+def sensor_monitor():
+    global last_sensor_values
+    while True:
+        if not fallback_mode:
+            readings = []
+            for i, unit in enumerate(UNITS):
+                if unit['type'] == 'analog':
+                    for ch in range(4):
+                        try:
+                            raw = clients[i].read_register(ch, functioncode=4)
+                            # Apply calibration
+                            cal = get_calibration(i, ch)
+                            val = raw * cal['scale'] + cal['offset']
+                            key = f"{i}-{ch}"
+                            # Only emit if value has changed significantly
+                            if key not in last_sensor_values or abs(last_sensor_values[key] - val) > 0.01:
+                                last_sensor_values[key] = val
+                                readings.append({
+                                    'name': unit['name'],
+                                    'slave_id': unit['slave_id'],
+                                    'channel': ch,
+                                    'value': round(val, 2)
+                                })
+                        except Exception as e:
+                            log(f"Fout sensor {unit['name']} ch{ch}: {e}")
+            if readings:
+                socketio.emit('sensor_update', readings, namespace='/sensors')
+        eventlet.sleep(2)  # Check every 2 seconds
+
+# ----------------------------
 # HTTP Routes
 # ----------------------------
 @app.route('/')
 def index():
-    if UNITS[current_unit]['type']=='relay':
+    if UNITS[current_unit]['type'] == 'relay':
         status = get_coil_status()
     else:
         status = get_analog_value()
@@ -188,12 +224,15 @@ def index():
 
 @app.route('/relay/<action>')
 def relay_action(action):
-    if UNITS[current_unit]['type']!='relay':
+    if UNITS[current_unit]['type'] != 'relay':
         log("Geen relais hier")
         return redirect(url_for('index'))
-    if action=='on':   set_relay_state(True)
-    if action=='off':  set_relay_state(False)
-    if action=='toggle': toggle_relay()
+    if action == 'on':
+        set_relay_state(True)
+    if action == 'off':
+        set_relay_state(False)
+    if action == 'toggle':
+        toggle_relay()
     time.sleep(1)
     return redirect(url_for('index'))
 
@@ -220,26 +259,8 @@ def select_unit():
 
 @app.route('/sensors')
 def sensors():
-    readings = []
-    for i, unit in enumerate(UNITS):
-        if unit['type']=='analog':
-            for ch in range(4):
-                try:
-                    val = "Unknown" if fallback_mode else clients[i].read_register(ch, functioncode=4)
-                    log(f"Lezen {unit['name']} ch{ch} → {val}")
-                except Exception as e:
-                    val = f"Err: {e}"
-                    log(f"Fout sensor {unit['name']} ch{ch}: {e}")
-                readings.append({
-                    'name': unit['name'],
-                    'slave_id': unit['slave_id'],
-                    'channel': ch,
-                    'value': val
-                })
-    return render_template('sensors.html',
-        readings=readings,
-        fallback_mode=fallback_mode
-    )
+    # Initial render is handled by SocketIO on client connect
+    return render_template('sensors.html', fallback_mode=fallback_mode)
 
 @app.route('/calibrate')
 def calibrate():
@@ -253,7 +274,7 @@ def on_connect():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('SELECT unit_index, channel, scale, offset FROM calibration')
-    all_cal = {f"{r[0]}-{r[1]}": {'scale':r[2], 'offset':r[3]} for r in c.fetchall()}
+    all_cal = {f"{r[0]}-{r[1]}": {'scale': r[2], 'offset': r[3]} for r in c.fetchall()}
     conn.close()
     emit('init_cal', all_cal)
 
@@ -264,12 +285,43 @@ def on_get_raw(data):
         raw = clients[i].read_register(ch, functioncode=4)
     except:
         raw = None
-    emit('raw_value', {'unit':i, 'channel':ch, 'raw':raw})
+    emit('raw_value', {'unit': i, 'channel': ch, 'raw': raw})
 
 @socketio.on('set_cal', namespace='/cal')
 def on_set_cal(data):
     set_calibration_db(data['unit'], data['channel'], data['scale'], data['offset'])
-    emit('cal_saved', {'unit':data['unit'], 'channel':data['channel']})
+    emit('cal_saved', {'unit': data['unit'], 'channel': data['channel']})
+
+# ----------------------------
+# WebSocket voor sensoren
+# ----------------------------
+@socketio.on('connect', namespace='/sensors')
+def sensors_connect():
+    log("Client connected to /sensors namespace")
+    readings = []
+    for i, unit in enumerate(UNITS):
+        if unit['type'] == 'analog':
+            for ch in range(4):
+                try:
+                    raw = "Unknown" if fallback_mode else clients[i].read_register(ch, functioncode=4)
+                    # Apply calibration
+                    cal = get_calibration(i, ch)
+                    val = raw if raw == "Unknown" else raw * cal['scale'] + cal['offset']
+                    readings.append({
+                        'name': unit['name'],
+                        'slave_id': unit['slave_id'],
+                        'channel': ch,
+                        'value': val if isinstance(val, str) else round(val, 2)
+                    })
+                except Exception as e:
+                    log(f"Fout sensor {unit['name']} ch{ch}: {e}")
+                    readings.append({
+                        'name': unit['name'],
+                        'slave_id': unit['slave_id'],
+                        'channel': ch,
+                        'value': f"Err: {e}"
+                    })
+    emit('sensor_update', readings)
 
 # ----------------------------
 # Main
@@ -277,5 +329,5 @@ def on_set_cal(data):
 if __name__ == '__main__':
     init_db()
     init_modbus()
-    current_unit = 0
+    socketio.start_background_task(sensor_monitor)
     socketio.run(app, host='0.0.0.0', port=5001, debug=False, use_reloader=False)
