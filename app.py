@@ -88,15 +88,11 @@ def set_calibration_db(unit_index, channel, scale, offset):
 # Calibration calculation
 # ----------------------------
 def calculate_calibration(raw1, phys1, raw2, phys2):
-    try:
-        if raw1 == raw2:
-            raise ValueError("Ruwe waarden moeten verschillend zijn")
-        scale = (phys2 - phys1) / (raw2 - raw1)
-        offset = phys1 - scale * raw1
-        return scale, offset
-    except Exception as e:
-        log(f"Fout bij kalibratieberekening: {e}")
-        raise
+    if raw1 == raw2:
+        raise ValueError("Ruwe waarden moeten verschillend zijn")
+    scale = (phys2 - phys1) / (raw2 - raw1)
+    offset = phys1 - scale * raw1
+    return scale, offset
 
 # ----------------------------
 # Logging helper
@@ -202,6 +198,7 @@ def sensor_monitor():
                                     'name': unit['name'],
                                     'slave_id': unit['slave_id'],
                                     'channel': ch,
+                                    'raw': raw,
                                     'value': round(val, 2)
                                 })
                         except Exception as e:
@@ -290,32 +287,31 @@ def on_connect():
 @socketio.on('get_raw', namespace='/cal')
 def on_get_raw(data):
     i, ch = data['unit_index'], data['channel']
-    point = data.get('point')  # Haal optionele point-parameter op
+    raw = None
+    calibrated = None
     try:
         raw = clients[i].read_register(ch, functioncode=4)
         cal = get_calibration(i, ch)
         calibrated = raw * cal['scale'] + cal['offset']
     except:
-        raw = None
-        calibrated = None
+        pass
     emit('raw_value', {
         'unit': i,
         'channel': ch,
         'raw': raw,
-        'calibrated': round(calibrated, 2) if calibrated else None,
-        'point': point
+        'calibrated': round(calibrated, 2) if calibrated is not None else None,
+        'point': data.get('point')
     })
 
 @socketio.on('set_cal_points', namespace='/cal')
 def on_set_cal_points(data):
     try:
         unit, ch = data['unit'], data['channel']
-        slave_id = UNITS[unit]['slave_id']
         raw1, phys1 = data['raw1'], data['phys1']
         raw2, phys2 = data['raw2'], data['phys2']
         scale, offset = calculate_calibration(raw1, phys1, raw2, phys2)
         set_calibration_db(unit, ch, scale, offset)
-        log(f"Kalibratie opgeslagen voor ID {slave_id}, kanaal {ch}: scale={scale}, offset={offset}")
+        log(f"Kalibratie opgeslagen voor unit {unit}, kanaal {ch}: scale={scale}, offset={offset}")
         emit('cal_saved', {'unit': unit, 'channel': ch, 'scale': scale, 'offset': offset})
     except Exception as e:
         emit('cal_error', {'unit': data['unit'], 'channel': data['channel'], 'error': str(e)})
@@ -330,24 +326,21 @@ def sensors_connect():
     for i, unit in enumerate(UNITS):
         if unit['type'] == 'analog':
             for ch in range(4):
+                raw = None
+                val = None
                 try:
-                    raw = "Unknown" if fallback_mode else clients[i].read_register(ch, functioncode=4)
+                    raw = clients[i].read_register(ch, functioncode=4) if not fallback_mode else None
                     cal = get_calibration(i, ch)
-                    val = raw if raw == "Unknown" else raw * cal['scale'] + cal['offset']
-                    readings.append({
-                        'name': unit['name'],
-                        'slave_id': unit['slave_id'],
-                        'channel': ch,
-                        'value': val if isinstance(val, str) else round(val, 2)
-                    })
+                    val = raw * cal['scale'] + cal['offset'] if raw is not None else None
                 except Exception as e:
                     log(f"Fout sensor {unit['name']} ch{ch}: {e}")
-                    readings.append({
-                        'name': unit['name'],
-                        'slave_id': unit['slave_id'],
-                        'channel': ch,
-                        'value': f"Err: {e}"
-                    })
+                readings.append({
+                    'name': unit['name'],
+                    'slave_id': unit['slave_id'],
+                    'channel': ch,
+                    'raw': raw,
+                    'value': round(val, 2) if val is not None else None
+                })
     emit('sensor_update', readings)
 
 # ----------------------------
