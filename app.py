@@ -201,7 +201,7 @@ def sensor_monitor():
                         except:
                             pass
             socketio.emit('sensor_update', readings, namespace='/sensors')
-        eventlet.sleep(2)
+        eventlet.sleep(1)
 
 # ----------------------------
 # SocketIO: Relay namespace
