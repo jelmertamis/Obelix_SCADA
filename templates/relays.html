@@ -6,13 +6,11 @@
   <style>
     body { font-family: sans-serif; padding: 1rem; text-align: center; }
     h1 { margin-bottom: 1rem; }
-    table { border-collapse: collapse; margin: auto; width: 80%; }
+    table { border-collapse: collapse; margin: auto; width: 90%; }
     th, td { border:1px solid #ccc; padding:8px; text-align: center; }
     th { background: #f0f0f0; }
-    form { display: inline-block; }
     button {
-      padding: 0.4rem 0.8rem;
-      margin: 0.2rem;
+      padding: 0.5rem 1rem;
       font-size: 0.9rem;
       border-radius: 4px;
       border: none;
@@ -21,6 +19,7 @@
       cursor: pointer;
     }
     button:hover { background-color: #0056b3; }
+    .module-name { font-weight: bold; }
   </style>
 </head>
 <body>
@@ -29,30 +28,29 @@
   <table>
     <thead>
       <tr>
-        <th>Module</th>
-        <th>Slave ID</th>
-        <th>Coil #</th>
-        <th>Status</th>
-        <th>Toggle</th>
+        <th>Module (Slave ID)</th>
+        {% for ch in range(8) %}
+        <th>Coil {{ ch }}</th>
+        {% endfor %}
       </tr>
     </thead>
     <tbody>
-    {% for r in relays %}
+      {% for r in relays %}
       <tr>
-        <td rowspan="8">{{ r.name }}</td>
-        <td rowspan="8">{{ r.slave_id }}</td>
-        <td>Coil {{ loop.index0 }}</td>
-        <td>{{ r.states[loop.index0] }}</td>
+        <td class="module-name">{{ r.name }} ({{ r.slave_id }})</td>
+        {% for ch in range(8) %}
         <td>
           <form method="post" action="{{ url_for('relays') }}">
             <input type="hidden" name="unit_idx" value="{{ r.idx }}">
-            <input type="hidden" name="coil_idx" value="{{ loop.index0 }}">
-            <button name="action" value="toggle">Toggle</button>
+            <input type="hidden" name="coil_idx" value="{{ ch }}">
+            <button name="action" value="toggle">
+              {{ r.states[ch] }}
+            </button>
           </form>
         </td>
+        {% endfor %}
       </tr>
-      {% if not loop.last %}{% for more in [] %}{% endfor %}{% endif %}
-    {% endfor %}
+      {% endfor %}
     </tbody>
   </table>
 </body>
