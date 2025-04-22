@@ -305,7 +305,7 @@ def aio():
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = None
-        readings.apppend({  
+        readings.append({  
             'channel':  ch,
             'raw_in':   raw_in,
             'phys_in':  phys_in,
