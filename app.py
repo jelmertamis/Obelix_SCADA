@@ -144,7 +144,7 @@ def set_relay_state(state):
         return
     try:
         clients[current_unit].write_bit(COIL_ADDRESS, state, functioncode=5)
-        log(f"Relay gezet op {state}")
+        log(f"Relay {current_unit}:{COIL_ADDRESS} gezet op {state}")
     except Exception as e:
         log(f"Fout set_relay_state: {e}")
 
