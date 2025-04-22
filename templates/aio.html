@@ -10,11 +10,7 @@
     th, td { border:1px solid #ccc; padding:8px; text-align:center; }
     th { background: #f0f0f0; }
     form { margin:0; }
-    input[type=number] {
-      width: 4em;
-      padding: 0.2rem;
-      margin-right: 0.4rem;
-    }
+    input[type=number] { width: 4em; padding: 0.2rem; margin-right: 0.4rem; }
     button {
       padding: 0.3rem 0.6rem;
       font-size: 0.9rem;
@@ -25,24 +21,20 @@
       cursor: pointer;
     }
     button:hover { background: #0056b3; }
-    .saved { font-style: italic; color: #555; }
   </style>
 </head>
 <body>
   <h1>{{ unit.name }} I/O Interface</h1>
   <p>Fallback Mode: <strong>{{ 'Yes' if fallback_mode else 'No' }}</strong></p>
-  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+  <p><a href="{{ url_for('index') }}" class="primary-btn">← Terug naar Dashboard</a></p>
 
   <table>
     <thead>
       <tr>
         <th>Channel</th>
-        <th>Raw In</th>
-        <th>Phys In (mA)</th>
         <th>Raw Out</th>
-        <th>Phys Out (mA)</th>
+        <th>Phys Out (mA)</th>
         <th>% Out</th>
-        <th>Saved %</th>
         <th>Set %</th>
       </tr>
     </thead>
@@ -50,17 +42,14 @@
       {% for r in readings %}
       <tr>
         <td>{{ r.channel }}</td>
-        <td>{{ r.raw_in if r.raw_in is not none else '—' }}</td>
-        <td>{{ r.phys_in if r.phys_in is not none else '—' }}</td>
         <td>{{ r.raw_out if r.raw_out is not none else '—' }}</td>
         <td>{{ r.phys_out if r.phys_out is not none else '—' }}</td>
         <td>{{ r.percent_out if r.percent_out is not none else '—' }}</td>
-        <td class="saved">{{ r.saved_percent if r.saved_percent is not none else '—' }}</td>
         <td>
           <form method="post" action="{{ url_for('aio') }}">
             <input type="hidden" name="channel" value="{{ r.channel }}">
             <input type="number" name="percent_value" step="0.1"
-                   value="{{ r.saved_percent if r.saved_percent is not none else r.percent_out }}">
+                   value="{{ r.percent_out if r.percent_out is not none else '' }}">
             <button type="submit">Set</button>
           </form>
         </td>
