@@ -19,7 +19,8 @@
         <th>Channel</th>
         <th>Raw In</th><th>Phys In (mA)</th>
         <th>Raw Out</th><th>Phys Out (mA)</th>
-        <th>Set Output (mA)</th>
+        <th>Set Output (mA)</th>`
+        <th>% Out</th>
       </tr>
     </thead>
     <tbody>
@@ -30,10 +31,11 @@
         <td>{{ r.phys_in }}</td>
         <td>{{ r.raw_out }}</td>
         <td>{{ r.phys_out }}</td>
+        <td>{{ r.percent_out }}</td>
         <td>
           <form method="post" action="{{ url_for('aio') }}">
             <input type="hidden" name="channel" value="{{ r.channel }}">
-            <input type="number" step="0.01" name="phys_value" value="{{ r.phys_out }}">
+            <input type="number" step="0.1" name="percent_value" value="{{ r.percent_out }}">
             <button type="submit">Set</button>
           </form>
         </td>

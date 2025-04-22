@@ -283,8 +283,12 @@ def aio():
     readings = []
     if request.method == 'POST':
         ch   = int(request.form['channel'])
-        phys = float(request.form['phys_value'])  # in mA
-        raw_counts = int((phys / 20.0) * 4095)
+        percent = float(request.form['percent_value'])  # in %
+        # stap 1: % → mA
+        mA = 4.0 + (percent / 100.0) * (20.0 - 4.0)
+        # stap 2: mA → raw (0..4095)
+        raw_counts = int((mA / 20.0) * 4095)
+
         set_aio_output(idx, ch, raw_counts)
         time.sleep(0.1)
     for ch in range(4):
@@ -294,15 +298,20 @@ def aio():
             cal_in   = get_calibration(idx, ch)
             phys_in  = round(raw_in  * cal_in['scale']  + cal_in['offset'], 2)
             phys_out = round((raw_out / 4095.0) * 20.0, 2)
+            if phys_out is not None:
+                percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1)
+            else:
+                percent_out = None
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = None
-        readings.append({  
+        readings.apppend({  
             'channel':  ch,
             'raw_in':   raw_in,
             'phys_in':  phys_in,
             'raw_out':  raw_out,
             'phys_out': phys_out
+            'percent_out': percent_out,   # %
         })
     return render_template('aio.html',
                            readings=readings,
