@@ -1,12 +1,14 @@
-<!-- templates/test_all_units.html -->
 <!DOCTYPE html>
 <html>
-<head><title>Relay &amp; Analog Control</title></head>
+<head>
+  <title>Relay &amp; Analog Control</title>
+</head>
 <body>
   <h1>Relay &amp; Analog Control</h1>
   <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-  <p>Current Unit: {{ current_unit }}</p>
-  {% if unit_type=='relay' %}
+  <p>Current Unit: {{ units[current_unit].name }}</p>
+
+  {% if unit_type == 'relay' %}
     <p>Coil #{{ coil_number }} — State: {{ status }}</p>
     <a href="{{ url_for('relay_action', action='on') }}"><button>ON</button></a>
     <a href="{{ url_for('relay_action', action='off') }}"><button>OFF</button></a>
@@ -18,15 +20,18 @@
   <h2>Select Unit</h2>
   <form method="post" action="{{ url_for('select_unit') }}">
     <select name="unit_index">
-      {% for i,u in enumerate(units) %}
-        <option value="{{ i }}" {% if i==current_unit %}selected{% endif %}>{{ u.name }}</option>
+      {% for u in units %}
+        <option value="{{ loop.index0 }}"
+                {% if loop.index0 == current_unit %}selected{% endif %}>
+          {{ u.name }}
+        </option>
       {% endfor %}
     </select>
     <button>Go</button>
   </form>
 
   <h2>Adjust Addresses</h2>
-  {% if unit_type=='relay' %}
+  {% if unit_type == 'relay' %}
     <form method="post" action="{{ url_for('update_coil') }}">
       <label>Coil #: <input name="coil_number" type="number" value="{{ coil_number }}"></label>
       <button>Set Coil</button>
@@ -42,6 +47,10 @@
   <p><a href="{{ url_for('calibrate') }}">Kalibratie interface →</a></p>
 
   <h2>Log</h2>
-  <ul>{% for m in log_messages %}<li>{{ m }}</li>{% endfor %}</ul>
+  <ul>
+    {% for m in log_messages %}
+      <li>{{ m }}</li>
+    {% endfor %}
+  </ul>
 </body>
 </html>
