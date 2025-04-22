@@ -50,7 +50,6 @@ current_unit = 0
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # calibratie tabel
     c.execute('''
         CREATE TABLE IF NOT EXISTS calibration (
             unit_index INTEGER NOT NULL,
@@ -60,7 +59,6 @@ def init_db():
             PRIMARY KEY(unit_index, channel)
         )
     ''')
-    # generieke settings tabel
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
@@ -130,7 +128,6 @@ def init_modbus():
         client.serial.bytesize  = 8
         client.serial.timeout   = 3
         clients.append(client)
-
     for i, u in enumerate(UNITS):
         try:
             if u['type'] == 'relay':
@@ -143,7 +140,6 @@ def init_modbus():
         except Exception as e:
             log(f"Modbus init fout voor {u['name']} (ID {u['slave_id']}): {e}")
             success = False
-
     fallback_mode = not success
 
 # ----------------------------
@@ -193,6 +189,38 @@ def ws_toggle_relay(data):
         emit('relay_error', {'error': str(e)})
 
 # ----------------------------
+# WebSocket: Sensors initial push
+# ----------------------------
+@socketio.on('connect', namespace='/sensors')
+def ws_sensors_connect():
+    log("Client verbonden op WebSocket /sensors")
+    readings = []
+    for i, u in enumerate(UNITS):
+        if u['type'] == 'analog':
+            for ch in range(4):
+                try:
+                    raw = clients[i].read_register(ch, functioncode=4)
+                    cal = get_calibration(i, ch)
+                    val = raw * cal['scale'] + cal['offset']
+                    readings.append({
+                        'name':     u['name'],
+                        'slave_id': u['slave_id'],
+                        'channel':  ch,
+                        'raw':      raw,
+                        'value':    round(val, 2)
+                    })
+                except Exception as e:
+                    log(f"Fout sensor {u['name']} ch{ch}: {e}")
+                    readings.append({
+                        'name':     u['name'],
+                        'slave_id': u['slave_id'],
+                        'channel':  ch,
+                        'raw':      None,
+                        'value':    None
+                    })
+    emit('sensor_update', readings)
+
+# ----------------------------
 # Sensor monitor (background)
 # ----------------------------
 def sensor_monitor():
@@ -219,7 +247,7 @@ def sensor_monitor():
         eventlet.sleep(2)
 
 # ----------------------------
-# HTTP & WebSocket Routes
+# HTTP Routes
 # ----------------------------
 @app.route('/')
 def index():
@@ -243,7 +271,6 @@ def aio():
         saved = get_setting(f"aio_ch{ch}_setpoint", None)
         readings.append({'channel': ch, 'saved_percent': saved})
 
-    # POST: update setpoint
     if request.method == 'POST':
         ch      = int(request.form['channel'])
         percent = float(request.form['percent_value'])
@@ -254,9 +281,9 @@ def aio():
         set_setting(f"aio_ch{ch}_setpoint", percent)
         time.sleep(0.1)
         for r in readings:
-            if r['channel']==ch: r['saved_percent']=percent
+            if r['channel']==ch:
+                r['saved_percent'] = percent
 
-    # lees hardwarewaarden
     for r in readings:
         ch = r['channel']
         try:
@@ -270,10 +297,10 @@ def aio():
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = percent_out = None
         r.update({
-            'raw_in': raw_in,
-            'phys_in': phys_in,
-            'raw_out': raw_out,
-            'phys_out': phys_out,
+            'raw_in':      raw_in,
+            'phys_in':     phys_in,
+            'raw_out':     raw_out,
+            'phys_out':    phys_out,
             'percent_out': percent_out
         })
 
