@@ -4,47 +4,55 @@
   <meta charset="utf-8">
   <title>Relay Controls</title>
   <style>
-    table { border-collapse: collapse; margin:auto; width: 80%; }
-    th, td { border:1px solid #ccc; padding:8px; text-align:center; }
-    th { background:#f0f0f0; }
-    select, button { margin:0 4px; }
+    body { font-family: sans-serif; padding: 1rem; text-align: center; }
+    h1 { margin-bottom: 1rem; }
+    table { border-collapse: collapse; margin: auto; width: 80%; }
+    th, td { border:1px solid #ccc; padding:8px; text-align: center; }
+    th { background: #f0f0f0; }
+    form { display: inline-block; }
+    button {
+      padding: 0.4rem 0.8rem;
+      margin: 0.2rem;
+      font-size: 0.9rem;
+      border-radius: 4px;
+      border: none;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover { background-color: #0056b3; }
   </style>
 </head>
 <body>
-  <h1 style="text-align:center;">Relay Controls</h1>
-  <p style="text-align:center;"><a href="{{ url_for('index') }}">← Terug</a></p>
+  <h1>Relay Controls</h1>
+  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Name</th><th>Slave ID</th>
-        {% for ch in range(8) %}<th>Coil {{ ch }}</th>{% endfor %}
-        <th>Action</th>
+        <th>Module</th>
+        <th>Slave ID</th>
+        <th>Coil #</th>
+        <th>Status</th>
+        <th>Toggle</th>
       </tr>
     </thead>
     <tbody>
-      {% for r in relays %}
+    {% for r in relays %}
       <tr>
-        <td>{{ r.idx }}</td>
-        <td>{{ r.name }}</td>
-        <td>{{ r.slave_id }}</td>
-        {% for state in r.states %}
-          <td>{{ state }}</td>
-        {% endfor %}
+        <td rowspan="8">{{ r.name }}</td>
+        <td rowspan="8">{{ r.slave_id }}</td>
+        <td>Coil {{ loop.index0 }}</td>
+        <td>{{ r.states[loop.index0] }}</td>
         <td>
           <form method="post" action="{{ url_for('relays') }}">
             <input type="hidden" name="unit_idx" value="{{ r.idx }}">
-            <select name="coil_idx">
-              {% for ch in range(8) %}
-                <option value="{{ ch }}">Coil {{ ch }}</option>
-              {% endfor %}
-            </select>
-            <button name="action" value="on">ON</button>
-            <button name="action" value="off">OFF</button>
+            <input type="hidden" name="coil_idx" value="{{ loop.index0 }}">
             <button name="action" value="toggle">Toggle</button>
           </form>
         </td>
       </tr>
-      {% endfor %}
+      {% if not loop.last %}{% for more in [] %}{% endfor %}{% endif %}
+    {% endfor %}
     </tbody>
   </table>
 </body>
