@@ -43,7 +43,6 @@ fallback_mode = False
 log_messages = []
 MAX_LOG_MESSAGES = 20
 current_unit = 0
-last_sensor_values = {}
 
 # ----------------------------
 # Database helpers
@@ -70,7 +69,10 @@ def get_calibration(unit_index, channel):
               (unit_index, channel))
     row = c.fetchone()
     conn.close()
-    return {'scale': row[0], 'offset': row[1]} if row else {'scale': 1.0, 'offset': 0.0}
+    if row:
+        return {'scale': row[0], 'offset': row[1]}
+    else:
+        return {'scale': 1.0, 'offset': 0.0}
 
 def set_calibration_db(unit_index, channel, scale, offset):
     conn = sqlite3.connect(DB_FILE)
@@ -101,30 +103,30 @@ def log(message):
 # Modbus init
 # ----------------------------
 def init_modbus():
-    global fallback_mode
-    clients.clear()
+    global fallback_mode, clients
+    clients = []
     success = True
 
-    for unit in UNITS:
-        client = minimalmodbus.Instrument(RS485_PORT, unit['slave_id'], mode='rtu')
-        client.serial.baudrate = BAUDRATE
-        client.serial.parity   = minimalmodbus.serial.PARITY_EVEN
-        client.serial.stopbits = 1
-        client.serial.bytesize = 8
-        client.serial.timeout  = 3
+    for u in UNITS:
+        client = minimalmodbus.Instrument(RS485_PORT, u['slave_id'], mode='rtu')
+        client.serial.baudrate  = BAUDRATE
+        client.serial.parity    = minimalmodbus.serial.PARITY_EVEN
+        client.serial.stopbits  = 1
+        client.serial.bytesize  = 8
+        client.serial.timeout   = 3
         clients.append(client)
 
-    for i, unit in enumerate(UNITS):
+    for i, u in enumerate(UNITS):
         try:
-            if unit['type'] == 'relay':
+            if u['type'] == 'relay':
                 clients[i].read_bit(COIL_ADDRESS, functioncode=1)
-            elif unit['type'] == 'analog':
+            elif u['type'] == 'analog':
                 clients[i].read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
-            elif unit['type'] == 'aio':
+            elif u['type'] == 'aio':
                 clients[i].read_register(0, functioncode=3)
-            log(f"Modbus OK voor {unit['name']} (ID {unit['slave_id']})")
+            log(f"Modbus OK voor {u['name']} (ID {u['slave_id']})")
         except Exception as e:
-            log(f"Modbus init fout voor {unit['name']} (ID {unit['slave_id']}): {e}")
+            log(f"Modbus init fout voor {u['name']} (ID {u['slave_id']}): {e}")
             success = False
 
     fallback_mode = not success
@@ -184,34 +186,33 @@ def read_aio_output(unit_index, channel):
     return clients[unit_index].read_register(channel, functioncode=3)
 
 def set_aio_output(unit_index, channel, raw_value):
-    raw = max(0, min(4095, raw_value))  # clamp tussen 0–4095
+    raw = max(0, min(4095, raw_value))
     clients[unit_index].write_register(channel, raw, functioncode=6)
     log(f"EX04AIO ch{channel} OUTPUT → raw {raw} (counts)")
 
 # ----------------------------
-# Sensor monitor
+# Sensor monitoring (background)
 # ----------------------------
 def sensor_monitor():
-    global last_sensor_values
     while True:
         if not fallback_mode:
             readings = []
-            for i, unit in enumerate(UNITS):
-                if unit['type'] == 'analog':
+            for i, u in enumerate(UNITS):
+                if u['type'] == 'analog':
                     for ch in range(4):
                         try:
                             raw = clients[i].read_register(ch, functioncode=4)
                             cal = get_calibration(i, ch)
                             val = raw * cal['scale'] + cal['offset']
                             readings.append({
-                                'name': unit['name'],
-                                'slave_id': unit['slave_id'],
+                                'name': u['name'],
+                                'slave_id': u['slave_id'],
                                 'channel': ch,
                                 'raw': raw,
                                 'value': round(val, 2)
                             })
                         except Exception as e:
-                            log(f"Fout sensor {unit['name']} ch{ch}: {e}")
+                            log(f"Fout sensor {u['name']} ch{ch}: {e}")
             socketio.emit('sensor_update', readings, namespace='/sensors')
         eventlet.sleep(2)
 
@@ -296,7 +297,7 @@ def aio():
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = None
-        readings.append({
+        readings.append({  
             'channel':  ch,
             'raw_in':   raw_in,
             'phys_in':  phys_in,
@@ -320,11 +321,9 @@ def on_cal_connect():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('SELECT unit_index, channel, scale, offset FROM calibration')
-    all_cal = {f"{r[0]}-{r[1]}": {'{"scale": r[2], "offset": r[3]}'}} for r in c.fetchall()}
+    all_cal = {f"{r[0]}-{r[1]}": {'scale': r[2], 'offset': r[3]} for r in c.fetchall()}
     conn.close()
     emit('init_cal', all_cal)
-
-# get_raw and set_cal_points as before
 
 # ----------------------------
 # WebSocket Sensors
@@ -333,19 +332,19 @@ def on_cal_connect():
 def on_sensors_connect():
     log("Client connected to /sensors namespace")
     readings = []
-    for i, unit in enumerate(UNITS):
-        if unit['type'] == 'analog':
+    for i, u in enumerate(UNITS):
+        if u['type'] == 'analog':
             for ch in range(4):
                 try:
                     raw = clients[i].read_register(ch, functioncode=4) if not fallback_mode else None
                     cal = get_calibration(i, ch)
                     val = raw * cal['scale'] + cal['offset'] if raw is not None else None
                 except Exception as e:
-                    log(f"Fout sensor {unit['name']} ch{ch}: {e}")
+                    log(f"Fout sensor {u['name']} ch{ch}: {e}")
                     raw = val = None
                 readings.append({
-                    'name': unit['name'],
-                    'slave_id': unit['slave_id'],
+                    'name': u['name'],
+                    'slave_id': u['slave_id'],
                     'channel': ch,
                     'raw': raw,
                     'value': round(val, 2) if val is not None else None
