@@ -4,7 +4,7 @@
     <title>Analog Sensors</title>
     <meta http-equiv="refresh" content="10">
     <style>
-      table { border-collapse: collapse; width: 50%; }
+      table { border-collapse: collapse; width: 60%; }
       th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
       th { background: #f0f0f0; }
     </style>
@@ -15,8 +15,9 @@
     <table>
         <thead>
             <tr>
-                <th>Sensor</th>
+                <th>Unit</th>
                 <th>Slave ID</th>
+                <th>Kanaal</th>
                 <th>Waarde</th>
             </tr>
         </thead>
@@ -25,11 +26,12 @@
             <tr>
                 <td>{{ sensor.name }}</td>
                 <td>{{ sensor.slave_id }}</td>
+                <td>{{ sensor.channel }}</td>
                 <td>{{ sensor.value }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    <p><a href="{{ url_for('index') }}">Terug naar overzicht</a></p>
+    <p><a href="{{ url_for('index') }}">← Terug naar overzicht</a></p>
 </body>
 </html>

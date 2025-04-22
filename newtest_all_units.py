@@ -219,23 +219,24 @@ def sensors():
     readings = []
     for i, unit in enumerate(UNITS):
         if unit['type'] == 'analog':
-            # Direct de client voor deze unit pakken, geen global nodig
-            try:
-                if fallback_mode:
-                    value = "Unknown (fallback mode)"
-                else:
-                    client = clients[i]
-                    # Lees register 0 (of aanpasbaar via INPUT_REGISTER_ADDRESS)
-                    value = client.read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
-                    log(f"Analoge waarde gelezen van {unit['name']} (slave {unit['slave_id']}): {value}")
-            except Exception as e:
-                value = f"Exception: {e}"
-                log(f"Fout bij uitlezen sensor {unit['name']}: {e}")
-            readings.append({
-                'name': unit['name'],
-                'slave_id': unit['slave_id'],
-                'value': value
-            })
+            for channel in range(4):  # vier kanalen: 0–3
+                try:
+                    if fallback_mode:
+                        value = "Unknown (fallback mode)"
+                    else:
+                        client = clients[i]
+                        # lees elk kanaal uit als Input Register 0..3
+                        value = client.read_register(channel, functioncode=4)
+                        log(f"Analoge waarde gelezen van {unit['name']} (slave {unit['slave_id']}), kanaal {channel}: {value}")
+                except Exception as e:
+                    value = f"Exception: {e}"
+                    log(f"Fout bij uitlezen {unit['name']} kanaal {channel}: {e}")
+                readings.append({
+                    'name': unit['name'],
+                    'slave_id': unit['slave_id'],
+                    'channel': channel,
+                    'value': value
+                })
     return render_template('sensors.html', readings=readings, fallback_mode=fallback_mode)
 
 
