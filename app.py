@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import time
-import threading
 import eventlet
 
 from flask import Flask, render_template, redirect, url_for, request
@@ -43,7 +42,7 @@ fallback_mode = False
 log_messages = []
 MAX_LOG_MESSAGES = 20
 current_unit = 0
-last_sensor_values = {}  # Track last known sensor values
+last_sensor_values = {}
 
 # ----------------------------
 # Database helpers
@@ -86,6 +85,20 @@ def set_calibration_db(unit_index, channel, scale, offset):
     conn.close()
 
 # ----------------------------
+# Calibration calculation
+# ----------------------------
+def calculate_calibration(raw1, phys1, raw2, phys2):
+    try:
+        if raw1 == raw2:
+            raise ValueError("Ruwe waarden moeten verschillend zijn")
+        scale = (phys2 - phys1) / (raw2 - raw1)
+        offset = phys1 - scale * raw1
+        return scale, offset
+    except Exception as e:
+        log(f"Fout bij kalibratieberekening: {e}")
+        raise
+
+# ----------------------------
 # Logging helper
 # ----------------------------
 def log(message):
@@ -111,7 +124,6 @@ def init_modbus():
             client.serial.bytesize = 8
             client.serial.timeout  = 3
             clients.append(client)
-        # Test elke client
         for i, unit in enumerate(UNITS):
             if unit['type'] == 'relay':
                 clients[i].read_bit(COIL_ADDRESS, functioncode=1)
@@ -181,11 +193,9 @@ def sensor_monitor():
                     for ch in range(4):
                         try:
                             raw = clients[i].read_register(ch, functioncode=4)
-                            # Apply calibration
                             cal = get_calibration(i, ch)
                             val = raw * cal['scale'] + cal['offset']
                             key = f"{i}-{ch}"
-                            # Only emit if value has changed significantly
                             if key not in last_sensor_values or abs(last_sensor_values[key] - val) > 0.01:
                                 last_sensor_values[key] = val
                                 readings.append({
@@ -198,7 +208,7 @@ def sensor_monitor():
                             log(f"Fout sensor {unit['name']} ch{ch}: {e}")
             if readings:
                 socketio.emit('sensor_update', readings, namespace='/sensors')
-        eventlet.sleep(2)  # Check every 2 seconds
+        eventlet.sleep(2)
 
 # ----------------------------
 # HTTP Routes
@@ -259,7 +269,6 @@ def select_unit():
 
 @app.route('/sensors')
 def sensors():
-    # Initial render is handled by SocketIO on client connect
     return render_template('sensors.html', fallback_mode=fallback_mode)
 
 @app.route('/calibrate')
@@ -283,14 +292,25 @@ def on_get_raw(data):
     i, ch = data['unit_index'], data['channel']
     try:
         raw = clients[i].read_register(ch, functioncode=4)
+        cal = get_calibration(i, ch)
+        calibrated = raw * cal['scale'] + cal['offset']
     except:
         raw = None
-    emit('raw_value', {'unit': i, 'channel': ch, 'raw': raw})
+        calibrated = None
+    emit('raw_value', {'unit': i, 'channel': ch, 'raw': raw, 'calibrated': round(calibrated, 2) if calibrated else None})
 
-@socketio.on('set_cal', namespace='/cal')
-def on_set_cal(data):
-    set_calibration_db(data['unit'], data['channel'], data['scale'], data['offset'])
-    emit('cal_saved', {'unit': data['unit'], 'channel': data['channel']})
+@socketio.on('set_cal_points', namespace='/cal')
+def on_set_cal_points(data):
+    try:
+        unit, ch = data['unit'], data['channel']
+        raw1, phys1 = data['raw1'], data['phys1']
+        raw2, phys2 = data['raw2'], data['phys2']
+        scale, offset = calculate_calibration(raw1, phys1, raw2, phys2)
+        set_calibration_db(unit, ch, scale, offset)
+        log(f"Kalibratie opgeslagen voor unit {unit}, kanaal {ch}: scale={scale}, offset={offset}")
+        emit('cal_saved', {'unit': unit, 'channel': ch, 'scale': scale, 'offset': offset})
+    except Exception as e:
+        emit('cal_error', {'unit': data['unit'], 'channel': data['channel'], 'error': str(e)})
 
 # ----------------------------
 # WebSocket voor sensoren
@@ -304,7 +324,6 @@ def sensors_connect():
             for ch in range(4):
                 try:
                     raw = "Unknown" if fallback_mode else clients[i].read_register(ch, functioncode=4)
-                    # Apply calibration
                     cal = get_calibration(i, ch)
                     val = raw if raw == "Unknown" else raw * cal['scale'] + cal['offset']
                     readings.append({
