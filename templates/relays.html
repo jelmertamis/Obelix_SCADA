@@ -17,9 +17,9 @@
       color: white;
       cursor: pointer;
     }
-    .btn-on { background-color: #28a745; }    /* groen */
-    .btn-off { background-color: #dc3545; }   /* rood */
-    .btn-on:hover { background-color: #218838; }
+    .btn-on  { background-color: #28a745; }
+    .btn-off { background-color: #dc3545; }
+    .btn-on:hover  { background-color: #218838; }
     .btn-off:hover { background-color: #c82333; }
     .module-name { font-weight: bold; }
   </style>
@@ -32,31 +32,64 @@
       <tr>
         <th>Module (Slave ID)</th>
         {% for ch in range(8) %}
-          <th>Coil {{ ch }}</th>
+        <th>Coil {{ ch }}</th>
         {% endfor %}
       </tr>
     </thead>
-    <tbody>
-      {% for r in relays %}
-      <tr>
-        <td class="module-name">{{ r.name }} ({{ r.slave_id }})</td>
-        {% for ch in range(8) %}
-        {% set state = r.states[ch] %}
-        <td>
-          <form method="post" action="{{ url_for('relays') }}">
-            <input type="hidden" name="unit_idx" value="{{ r.idx }}">
-            <input type="hidden" name="coil_idx" value="{{ ch }}">
-            <button
-              name="action" value="toggle"
-              class="{{ 'btn-on' if state == 'ON' else 'btn-off' }}">
-              {{ state }}
-            </button>
-          </form>
-        </td>
-        {% endfor %}
-      </tr>
-      {% endfor %}
+    <tbody id="relayBody">
+      <!-- JS vult hier de rijen in -->
     </tbody>
   </table>
+
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  <script>
+    const socket = io('/relays');
+
+    // Bij verbinding: server stuurt init_relays met alle modules
+    socket.on('init_relays', relays => {
+      renderTable(relays);
+    });
+
+    // Bij een toggle-ack
+    socket.on('relay_toggled', data => {
+      const btn = document.querySelector(
+        'button[data-unit="'+data.unit_idx+'"][data-coil="'+data.coil_idx+'"]'
+      );
+      if (!btn) return;
+      btn.textContent = data.state;
+      btn.className = data.state === 'ON' ? 'btn-on' : 'btn-off';
+    });
+
+    function renderTable(relays) {
+      const tbody = document.getElementById('relayBody');
+      tbody.innerHTML = '';
+      relays.forEach(r => {
+        const tr = document.createElement('tr');
+        // Module-cel
+        const tdMod = document.createElement('td');
+        tdMod.textContent = r.name + ' (' + r.slave_id + ')';
+        tdMod.className = 'module-name';
+        tr.appendChild(tdMod);
+        // 8 coil-buttons
+        r.states.forEach((state, ch) => {
+          const td = document.createElement('td');
+          const btn = document.createElement('button');
+          btn.textContent = state;
+          btn.className = state === 'ON' ? 'btn-on' : 'btn-off';
+          btn.setAttribute('data-unit',  r.idx);
+          btn.setAttribute('data-coil',  ch);
+          btn.addEventListener('click', () => {
+            socket.emit('toggle_relay', {
+              unit_idx: r.idx,
+              coil_idx: ch
+            });
+          });
+          td.appendChild(btn);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
 </body>
 </html>
