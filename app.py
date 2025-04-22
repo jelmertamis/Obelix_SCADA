@@ -50,6 +50,7 @@ current_unit = 0
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    # calibratie tabel
     c.execute('''
         CREATE TABLE IF NOT EXISTS calibration (
             unit_index INTEGER NOT NULL,
@@ -59,6 +60,7 @@ def init_db():
             PRIMARY KEY(unit_index, channel)
         )
     ''')
+    # generieke settings tabel
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
@@ -128,6 +130,7 @@ def init_modbus():
         client.serial.bytesize  = 8
         client.serial.timeout   = 3
         clients.append(client)
+
     for i, u in enumerate(UNITS):
         try:
             if u['type'] == 'relay':
@@ -140,6 +143,7 @@ def init_modbus():
         except Exception as e:
             log(f"Modbus init fout voor {u['name']} (ID {u['slave_id']}): {e}")
             success = False
+
     fallback_mode = not success
 
 # ----------------------------
@@ -215,12 +219,11 @@ def sensor_monitor():
         eventlet.sleep(2)
 
 # ----------------------------
-# HTTP Routes
+# HTTP & WebSocket Routes
 # ----------------------------
 @app.route('/')
 def index():
-    return render_template('dashboard.html',
-                           fallback_mode=fallback_mode)
+    return render_template('dashboard.html', fallback_mode=fallback_mode)
 
 @app.route('/relays')
 def relays():
@@ -230,10 +233,54 @@ def relays():
 def sensors():
     return render_template('sensors.html', fallback_mode=fallback_mode)
 
-@app.route('/aio', methods=['GET', 'POST'])
+@app.route('/aio', methods=['GET','POST'])
 def aio():
-    # your existing /aio logic here...
-    pass
+    idx = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
+
+    # laad opgeslagen setpoints
+    readings = []
+    for ch in range(4):
+        saved = get_setting(f"aio_ch{ch}_setpoint", None)
+        readings.append({'channel': ch, 'saved_percent': saved})
+
+    # POST: update setpoint
+    if request.method == 'POST':
+        ch      = int(request.form['channel'])
+        percent = float(request.form['percent_value'])
+        mA         = 4.0 + (percent/100.0)*16.0
+        raw_counts = int((mA/20.0)*4095)
+        clients[idx].write_register(ch, raw_counts, functioncode=6)
+        log(f"EX04AIO ch{ch} OUTPUT → raw {raw_counts}")
+        set_setting(f"aio_ch{ch}_setpoint", percent)
+        time.sleep(0.1)
+        for r in readings:
+            if r['channel']==ch: r['saved_percent']=percent
+
+    # lees hardwarewaarden
+    for r in readings:
+        ch = r['channel']
+        try:
+            raw_in   = clients[idx].read_register(ch, functioncode=4)
+            raw_out  = clients[idx].read_register(ch, functioncode=3)
+            cal      = get_calibration(idx, ch)
+            phys_in  = round(raw_in*cal['scale']+cal['offset'],2)
+            phys_out = round((raw_out/4095.0)*20.0,2)
+            percent_out = round((phys_out-4.0)/16.0*100.0,1) if phys_out>4.0 else None
+        except Exception as e:
+            log(f"AIO fout ch{ch}: {e}")
+            raw_in = raw_out = phys_in = phys_out = percent_out = None
+        r.update({
+            'raw_in': raw_in,
+            'phys_in': phys_in,
+            'raw_out': raw_out,
+            'phys_out': phys_out,
+            'percent_out': percent_out
+        })
+
+    return render_template('aio.html',
+                           readings=readings,
+                           unit=UNITS[idx],
+                           fallback_mode=fallback_mode)
 
 @app.route('/calibrate')
 def calibrate():

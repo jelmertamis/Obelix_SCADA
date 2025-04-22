@@ -2,40 +2,65 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>{{ unit.name }} Interface</title>
+  <title>EX04AIO I/O Interface</title>
   <style>
-    table{border-collapse:collapse;width:80%}
-    th,td{border:1px solid #ccc;padding:6px;text-align:center}
-    th{background:#f0f0f0;}
-    input[type=number]{width:4em;}
+    body { font-family: sans-serif; padding: 1rem; text-align: center; }
+    h1 { margin-bottom: 1rem; }
+    table { border-collapse: collapse; margin: auto; width: 90%; }
+    th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background: #f0f0f0; }
+    form { margin:0; }
+    input[type=number] {
+      width: 4em;
+      padding: 0.2rem;
+      margin-right: 0.4rem;
+    }
+    button {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      background: #007bff;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover { background: #0056b3; }
+    .saved { font-style: italic; color: #555; }
   </style>
 </head>
 <body>
-  <h1>{{ unit.name }} (ID {{ unit.slave_id }})</h1>
-  <p>Fallback: {{ 'Yes' if fallback_mode else 'No' }}</p>
+  <h1>{{ unit.name }} I/O Interface</h1>
+  <p>Fallback Mode: <strong>{{ 'Yes' if fallback_mode else 'No' }}</strong></p>
+  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+
   <table>
     <thead>
       <tr>
         <th>Channel</th>
-        <th>Raw In</th><th>Phys In (mA)</th>
-        <th>Raw Out</th><th>Phys Out (mA)</th>
-        <th>Set Output (%)</th>`
-        <th>% Out</th>
+        <th>Raw In</th>
+        <th>Phys In (mA)</th>
+        <th>Raw Out</th>
+        <th>Phys Out (mA)</th>
+        <th>% Out</th>
+        <th>Saved %</th>
+        <th>Set %</th>
       </tr>
     </thead>
     <tbody>
       {% for r in readings %}
       <tr>
         <td>{{ r.channel }}</td>
-        <td>{{ r.raw_in }}</td>
-        <td>{{ r.phys_in }}</td>
-        <td>{{ r.raw_out }}</td>
-        <td>{{ r.phys_out }}</td>
-        <td>{{ r.percent_out }}</td>
+        <td>{{ r.raw_in if r.raw_in is not none else '—' }}</td>
+        <td>{{ r.phys_in if r.phys_in is not none else '—' }}</td>
+        <td>{{ r.raw_out if r.raw_out is not none else '—' }}</td>
+        <td>{{ r.phys_out if r.phys_out is not none else '—' }}</td>
+        <td>{{ r.percent_out if r.percent_out is not none else '—' }}</td>
+        <td class="saved">{{ r.saved_percent if r.saved_percent is not none else '—' }}</td>
         <td>
           <form method="post" action="{{ url_for('aio') }}">
             <input type="hidden" name="channel" value="{{ r.channel }}">
-            <input type="number" step="0.1" name="percent_value" value="{{ r.percent_out }}">
+            <input type="number" name="percent_value" step="0.1"
+                   value="{{ r.saved_percent if r.saved_percent is not none else r.percent_out }}">
             <button type="submit">Set</button>
           </form>
         </td>
@@ -43,6 +68,5 @@
       {% endfor %}
     </tbody>
   </table>
-  <p><a href="{{ url_for('index') }}">← Terug</a></p>
 </body>
 </html>

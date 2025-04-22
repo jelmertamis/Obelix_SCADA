@@ -2,74 +2,50 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Live Sensor Weergave</title>
-  <meta http-equiv="refresh" content="300"> <!-- ververs per 5 min als fallback -->
+  <title>Sensor Uitlezingen</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
-    table { border-collapse: collapse; width: 80%; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    body { font-family: sans-serif; padding: 1rem; text-align: center; }
+    h1 { margin-bottom: 1rem; }
+    table { border-collapse: collapse; margin: auto; width: 80%; }
+    th, td { border:1px solid #ccc; padding:8px; text-align: center; }
     th { background: #f0f0f0; }
   </style>
-  <!-- Socket.IO client library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.3/socket.io.min.js"></script>
 </head>
 <body>
-  <h1>Live Sensor Weergave</h1>
-  <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-
-  <table id="sensor-table">
+  <h1>Sensor Uitlezingen</h1>
+  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+  <table>
     <thead>
       <tr>
-        <th>Unit</th>
-        <th>Slave ID</th>
-        <th>Channel</th>
-        <th>Raw (counts)</th>
-        <th>Value (gekalibreerd)</th>
+        <th>Naam</th>
+        <th>Slave ID</th>
+        <th>Kanaal</th>
+        <th>Ruwe Waarde</th>
+        <th>Gekalibreerd</th>
       </tr>
     </thead>
-    <tbody>
-      <!-- wordt door JavaScript gevuld -->
+    <tbody id="sensorBody">
+      <!-- Wordt gevuld via WebSocket -->
     </tbody>
   </table>
 
-  <p><a href="{{ url_for('index') }}">← Terug</a></p>
-
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    // Verbinden met de /sensors namespace
     const socket = io('/sensors');
 
-    // Helper om rij te maken of bij te werken
-    function updateRow(reading) {
-      const key = `${reading.slave_id}-${reading.channel}`;
-      let row = document.getElementById('row-' + key);
-      if (!row) {
-        // nieuwe rij
-        row = document.createElement('tr');
-        row.id = 'row-' + key;
-        row.innerHTML = `
-          <td>${reading.name}</td>
-          <td>${reading.slave_id}</td>
-          <td>${reading.channel}</td>
-          <td class="raw"></td>
-          <td class="cal"></td>
-        `;
-        document.querySelector('#sensor-table tbody').appendChild(row);
-      }
-      // update waarden
-      row.querySelector('.raw').textContent = reading.raw !== undefined ? reading.raw : '–';
-      row.querySelector('.cal').textContent = reading.value !== undefined ? reading.value : '–';
-    }
-
-    // Wanneer we (opnieuw) connecten, stuurt de server initiale readings
-    socket.on('sensor_update', data => {
-      // data is een array van readings
-      data.forEach(r => updateRow(r));
+    socket.on('sensor_update', readings => {
+      const tbody = document.getElementById('sensorBody');
+      tbody.innerHTML = '';
+      readings.forEach(r => {
+        const tr = document.createElement('tr');
+        ['name','slave_id','channel','raw','value'].forEach(key => {
+          const td = document.createElement('td');
+          td.textContent = r[key] != null ? r[key] : '—';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
     });
-
-    // Optioneel: poll elke 5 s voor zekerheid
-    setInterval(() => {
-      socket.emit('request_update');
-    }, 5000);
   </script>
 </body>
 </html>

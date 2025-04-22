@@ -45,12 +45,10 @@
   <script>
     const socket = io('/relays');
 
-    // Bij verbinding: server stuurt init_relays met alle modules
     socket.on('init_relays', relays => {
       renderTable(relays);
     });
 
-    // Bij een toggle-ack
     socket.on('relay_toggled', data => {
       const btn = document.querySelector(
         'button[data-unit="'+data.unit_idx+'"][data-coil="'+data.coil_idx+'"]'
@@ -65,12 +63,10 @@
       tbody.innerHTML = '';
       relays.forEach(r => {
         const tr = document.createElement('tr');
-        // Module-cel
         const tdMod = document.createElement('td');
         tdMod.textContent = r.name + ' (' + r.slave_id + ')';
         tdMod.className = 'module-name';
         tr.appendChild(tdMod);
-        // 8 coil-buttons
         r.states.forEach((state, ch) => {
           const td = document.createElement('td');
           const btn = document.createElement('button');
