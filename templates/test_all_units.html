@@ -8,9 +8,9 @@
   <p>Current Unit: {{ current_unit }}</p>
   {% if unit_type=='relay' %}
     <p>Coil #{{ coil_number }} — State: {{ status }}</p>
-    <a href="{{ url_for('relay_action','on') }}"><button>ON</button></a>
-    <a href="{{ url_for('relay_action','off') }}"><button>OFF</button></a>
-    <a href="{{ url_for('relay_action','toggle') }}"><button>Toggle</button></a>
+    <a href="{{ url_for('relay_action', action='on') }}"><button>ON</button></a>
+    <a href="{{ url_for('relay_action', action='off') }}"><button>OFF</button></a>
+    <a href="{{ url_for('relay_action', action='toggle') }}"><button>Toggle</button></a>
   {% else %}
     <p>Register #{{ register_number }} — Value: {{ status }}</p>
   {% endif %}
