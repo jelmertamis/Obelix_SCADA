@@ -298,7 +298,7 @@ def aio():
             cal_in   = get_calibration(idx, ch)
             phys_in  = round(raw_in  * cal_in['scale']  + cal_in['offset'], 2)
             phys_out = round((raw_out / 4095.0) * 20.0, 2)
-            if phys_out is not None:
+            if phys_out > 3.99:
                 percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1)
             else:
                 percent_out = None
