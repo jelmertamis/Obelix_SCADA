@@ -219,7 +219,7 @@ def sensor_monitor():
 # ----------------------------
 @app.route('/')
 def index():
-    return render_template('newtest_all_units.html',
+    return render_template('dashboard.html',
                            fallback_mode=fallback_mode)
 
 @app.route('/relays')
