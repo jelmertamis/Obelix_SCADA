@@ -232,34 +232,47 @@ def index():
 
 @app.route('/relays', methods=['GET','POST'])
 def relays():
-    global current_unit
-    if request.method=='POST':
+    if request.method == 'POST':
         unit_idx = int(request.form['unit_idx'])
-        current_unit = unit_idx
-        action = request.form['action']
-        if action=='on':     set_relay_state(True)
-        if action=='off':    set_relay_state(False)
-        if action=='toggle': toggle_relay()
-        time.sleep(0.1)
+        coil_idx = int(request.form['coil_idx'])
+        action   = request.form['action']
+
+        client = clients[unit_idx]
+        log(f"Actie {action.upper()} op relay {unit_idx} coil {coil_idx}")
+        try:
+            if action == 'on':
+                client.write_bit(coil_idx, True, functioncode=5)
+            elif action == 'off':
+                client.write_bit(coil_idx, False, functioncode=5)
+            else:  # toggle
+                cur = client.read_bit(coil_idx, functioncode=1)
+                client.write_bit(coil_idx, not cur, functioncode=5)
+        except Exception as e:
+            log(f"Fout bij relay action: {e}")
+
         return redirect(url_for('relays'))
 
+    # GET: bouw statuslijst
     relay_status = []
-    prev = current_unit
     for i,u in enumerate(UNITS):
         if u['type']=='relay':
-            current_unit = i
-            state = get_coil_status()
+            # lees alle 8 coils in één keer (optioneel)
+            states = []
+            for ch in range(8):
+                try:
+                    s = clients[i].read_bit(ch, functioncode=1)
+                    states.append('ON' if s else 'OFF')
+                except:
+                    states.append('Err')
             relay_status.append({
-                'idx':        i,
-                'name':       u['name'],
-                'slave_id':   u['slave_id'],
-                'state':      state,
-                'coil_number': COIL_ADDRESS
+                'idx': i,
+                'name': u['name'],
+                'slave_id': u['slave_id'],
+                'states': states
             })
-    current_unit = prev
-    return render_template('relays.html',
-                           relays=relay_status,
-                           coil_number=COIL_ADDRESS)
+
+    return render_template('relays.html', relays=relay_status)
+
 
 
 @app.route('/update_coil', methods=['POST'])

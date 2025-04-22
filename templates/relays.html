@@ -4,24 +4,21 @@
   <meta charset="utf-8">
   <title>Relay Controls</title>
   <style>
-    table { border-collapse: collapse; width: 60%; margin: auto; }
+    table { border-collapse: collapse; margin:auto; width: 80%; }
     th, td { border:1px solid #ccc; padding:8px; text-align:center; }
     th { background:#f0f0f0; }
-    form { display:inline; }
+    select, button { margin:0 4px; }
   </style>
 </head>
 <body>
   <h1 style="text-align:center;">Relay Controls</h1>
-  <p style="text-align:center;"><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+  <p style="text-align:center;"><a href="{{ url_for('index') }}">← Terug</a></p>
   <table>
     <thead>
       <tr>
-        <th>#</th>
-        <th>Name</th>
-        <th>Slave ID</th>
-        <th>Coil #</th>
-        <th>State</th>
-        <th>Actions</th>
+        <th>#</th><th>Name</th><th>Slave ID</th>
+        {% for ch in range(8) %}<th>Coil {{ ch }}</th>{% endfor %}
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
@@ -30,23 +27,20 @@
         <td>{{ r.idx }}</td>
         <td>{{ r.name }}</td>
         <td>{{ r.slave_id }}</td>
-        <td>{{ coil_number }}</td>
-        <td>{{ r.state }}</td>
+        {% for state in r.states %}
+          <td>{{ state }}</td>
+        {% endfor %}
         <td>
           <form method="post" action="{{ url_for('relays') }}">
             <input type="hidden" name="unit_idx" value="{{ r.idx }}">
-            <input type="hidden" name="action" value="on">
-            <button type="submit">ON</button>
-          </form>
-          <form method="post" action="{{ url_for('relays') }}">
-            <input type="hidden" name="unit_idx" value="{{ r.idx }}">
-            <input type="hidden" name="action" value="off">
-            <button type="submit">OFF</button>
-          </form>
-          <form method="post" action="{{ url_for('relays') }}">
-            <input type="hidden" name="unit_idx" value="{{ r.idx }}">
-            <input type="hidden" name="action" value="toggle">
-            <button type="submit">Toggle</button>
+            <select name="coil_idx">
+              {% for ch in range(8) %}
+                <option value="{{ ch }}">Coil {{ ch }}</option>
+              {% endfor %}
+            </select>
+            <button name="action" value="on">ON</button>
+            <button name="action" value="off">OFF</button>
+            <button name="action" value="toggle">Toggle</button>
           </form>
         </td>
       </tr>
