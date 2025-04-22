@@ -1,2 +1,118 @@
 <!DOCTYPE html>
-<html><body><h1>Kalibratie Interface (nog invullen)</h1></body></html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sensor Range Instellingen</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; text-align: center; }
+    h1 { margin-bottom: 1rem; }
+    form { display: inline-block; margin: 1rem; text-align: left; }
+    label { display: block; margin: 0.5rem 0; }
+    input, select, button { font-size: 1rem; padding: 0.4rem; }
+    table { border-collapse: collapse; margin: auto; width: 60%; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
+    th { background: #f0f0f0; }
+    .point-row { background: #fafafa; }
+    .status { margin-top: 1rem; color: green; }
+    .error  { margin-top: 1rem; color: red; }
+  </style>
+</head>
+<body>
+  <h1>Sensor Range Instellingen</h1>
+  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+
+  <form id="calForm">
+    <label>
+      Module:
+      <select id="unitSelect">
+        {% for i,u in enumerate(units) %}
+          {% if u.type == 'analog' %}
+            <option value="{{ i }}">{{ u.name }} (ID {{ u.slave_id }})</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Kanaal:
+      <select id="channelSelect">
+        {% for ch in range(4) %}
+          <option value="{{ ch }}">Kanaal {{ ch }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <table>
+      <thead>
+        <tr><th>Kalibreer‐punt</th><th>Raw</th><th>Physieke waarde</th><th>Actie</th></tr>
+      </thead>
+      <tbody>
+        <tr class="point-row">
+          <td>Punt 1</td>
+          <td id="raw1">—</td>
+          <td><input type="number" step="0.1" id="phys1" placeholder="bijv. 0.0"></td>
+          <td><button type="button" id="read1">Lees Raw</button></td>
+        </tr>
+        <tr class="point-row">
+          <td>Punt 2</td>
+          <td id="raw2">—</td>
+          <td><input type="number" step="0.1" id="phys2" placeholder="bijv. 100.0"></td>
+          <td><button type="button" id="read2">Lees Raw</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:1rem;">
+      <button type="button" id="saveCal">Opslaan Kalibratie</button>
+    </div>
+    <div id="statusMsg" class="status" style="display:none;"></div>
+    <div id="errorMsg"  class="error"  style="display:none;"></div>
+  </form>
+
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  <script>
+    const socket = io('/cal');
+    let initCal = {};
+
+    socket.on('init_cal', data => {
+      initCal = data;
+      console.log('Bestaande kalibraties:', initCal);
+    });
+
+    function readRaw(point) {
+      const unit    = parseInt(document.getElementById('unitSelect').value);
+      const channel = parseInt(document.getElementById('channelSelect').value);
+      socket.emit('get_raw', { unit_index: unit, channel: channel, point });
+    }
+
+    socket.on('raw_value', msg => {
+      document.getElementById('raw'+msg.point).textContent = msg.raw != null ? msg.raw : 'Err';
+    });
+
+    document.getElementById('read1').addEventListener('click', () => readRaw(1));
+    document.getElementById('read2').addEventListener('click', () => readRaw(2));
+
+    document.getElementById('saveCal').addEventListener('click', () => {
+      const unit     = parseInt(document.getElementById('unitSelect').value);
+      const channel  = parseInt(document.getElementById('channelSelect').value);
+      const raw1     = parseFloat(document.getElementById('raw1').textContent);
+      const phys1    = parseFloat(document.getElementById('phys1').value);
+      const raw2     = parseFloat(document.getElementById('raw2').textContent);
+      const phys2    = parseFloat(document.getElementById('phys2').value);
+      document.getElementById('statusMsg').style.display = 'none';
+      document.getElementById('errorMsg').style.display  = 'none';
+      socket.emit('set_cal_points', { unit, channel, raw1, phys1, raw2, phys2 });
+    });
+
+    socket.on('cal_saved', info => {
+      document.getElementById('statusMsg').textContent = 
+        `Kalibratie opgeslagen (module ${info.unit}, kanaal ${info.channel}): ` +
+        `scale=${info.scale.toFixed(4)}, offset=${info.offset.toFixed(2)}`;
+      document.getElementById('statusMsg').style.display = 'block';
+    });
+
+    socket.on('cal_error', err => {
+      document.getElementById('errorMsg').textContent = `Fout bij kalibratie: ${err.error}`;
+      document.getElementById('errorMsg').style.display = 'block';
+    });
+  </script>
+</body>
+</html>
