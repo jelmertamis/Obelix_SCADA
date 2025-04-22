@@ -333,7 +333,7 @@ def aio():
             cal_in = get_calibration(idx, ch)
             phys_in = round(raw_in * cal_in['scale'] + cal_in['offset'], 2)
             phys_out = round((raw_out / 4095.0) * 20.0, 2)
-            percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1) if phys_out > 4.0 else None
+            percent_out = round((phys_out - 4.0) / 16.0 * 100.0, 1) if phys_out > 3.9 else None
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = percent_out = None
