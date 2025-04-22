@@ -219,23 +219,25 @@ def sensors():
     readings = []
     for i, unit in enumerate(UNITS):
         if unit['type'] == 'analog':
-            # wissel current_unit tijdelijk om zodat de helper de juiste client pakt
-            temp_unit = current_unit
+            # Direct de client voor deze unit pakken, geen global nodig
             try:
-                # haal de waarde op
-                global current_unit, current_register
-                current_unit = i
-                current_register = INPUT_REGISTER_ADDRESS
-                value = get_analog_value()
-            finally:
-                # zet current_unit weer terug
-                current_unit = temp_unit
+                if fallback_mode:
+                    value = "Unknown (fallback mode)"
+                else:
+                    client = clients[i]
+                    # Lees register 0 (of aanpasbaar via INPUT_REGISTER_ADDRESS)
+                    value = client.read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
+                    log(f"Analoge waarde gelezen van {unit['name']} (slave {unit['slave_id']}): {value}")
+            except Exception as e:
+                value = f"Exception: {e}"
+                log(f"Fout bij uitlezen sensor {unit['name']}: {e}")
             readings.append({
                 'name': unit['name'],
                 'slave_id': unit['slave_id'],
                 'value': value
             })
     return render_template('sensors.html', readings=readings, fallback_mode=fallback_mode)
+
 
 if __name__ == "__main__":
     init_modbus()
