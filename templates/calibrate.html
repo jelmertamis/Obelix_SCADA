@@ -4,106 +4,106 @@
   <meta charset="utf-8">
   <title>Sensor Range Instellingen</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; text-align: center; }
-    h1 { margin-bottom: 1rem; }
-    form { display: inline-block; margin: 1rem; text-align: left; }
-    label { display: block; margin: 0.5rem 0; }
-    input, select, button { font-size: 1rem; padding: 0.4rem; width: 8em; }
-    table { border-collapse: collapse; margin: auto; width: 60%; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
-    th { background: #f0f0f0; }
-    .status { margin-top: 1rem; color: green; }
-    .error  { margin-top: 1rem; color: red; }
+    body { font-family: sans-serif; padding:1rem; text-align:center; }
+    h1 { margin-bottom:1rem; }
+    .form-group { margin:0.5rem 0; }
+    label { display:block; margin-bottom:0.25rem; }
+    select, input, button {
+      font-size:1rem; padding:0.4rem; width:200px; margin-bottom:0.5rem;
+    }
+    button { width:auto; }
+    .status { color:green; margin-top:1rem; }
+    .error  { color:red; margin-top:1rem; }
   </style>
 </head>
 <body>
   <h1>Sensor Range Instellingen</h1>
   <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
 
-  <form id="rangeForm">
-    <label>
-      Module:
-      <select id="unitSelect">
-        {% for i in range(units|length) %}
-          {% if units[i]['type']=='analog' %}
-            <option value="{{ i }}">{{ units[i]['name'] }} (ID {{ units[i]['slave_id'] }})</option>
-          {% endif %}
-        {% endfor %}
-      </select>
-    </label>
+  <div class="form-group">
+    <label>Module:</label>
+    <select id="unitSelect">
+      {% for i in range(units|length) %}
+        {% if units[i]['type']=='analog' %}
+          <option value="{{ i }}">
+            {{ units[i]['name'] }} (ID {{ units[i]['slave_id'] }})
+          </option>
+        {% endif %}
+      {% endfor %}
+    </select>
+  </div>
 
-    <label>
-      Kanaal:
-      <select id="channelSelect">
-        {% for ch in range(4) %}
-          <option value="{{ ch }}">Kanaal {{ ch }}</option>
-        {% endfor %}
-      </select>
-    </label>
+  <div class="form-group">
+    <label>Kanaal:</label>
+    <select id="channelSelect">
+      {% for ch in range(4) %}
+        <option value="{{ ch }}">Kanaal {{ ch }}</option>
+      {% endfor %}
+    </select>
+  </div>
 
-    <label>
-      mA Min:
-      <input type="number" step="0.1" id="maMin" value="4.0">
-    </label>
-    <label>
-      mA Max:
-      <input type="number" step="0.1" id="maMax" value="20.0">
-    </label>
-    <label>
-      Fysieke Min (bijv. 0.0):
-      <input type="number" step="0.1" id="physMin">
-    </label>
-    <label>
-      Fysieke Max (bijv. 120.0):
-      <input type="number" step="0.1" id="physMax">
-    </label>
+  <div class="form-group">
+    <label>Min sensorwaarde (raw=0):</label>
+    <input type="number" step="0.1" id="minValue" placeholder="bijv. 0.0">
+  </div>
 
-    <div style="margin-top:1rem;">
-      <button type="button" id="saveRange">Opslaan Range</button>
-    </div>
+  <div class="form-group">
+    <label>Max sensorwaarde (raw=4095):</label>
+    <input type="number" step="0.1" id="maxValue" placeholder="bijv. 120.0">
+  </div>
 
-    <div id="statusMsg" class="status" style="display:none;"></div>
-    <div id="errorMsg"  class="error"  style="display:none;"></div>
-  </form>
+  <button id="saveRange">Opslaan Range</button>
+
+  <div id="statusMsg" class="status" style="display:none;"></div>
+  <div id="errorMsg"  class="error"  style="display:none;"></div>
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    const socket = io('/cal');
+    const socket        = io('/cal');
+    const unitSelect    = document.getElementById('unitSelect');
+    const channelSelect = document.getElementById('channelSelect');
+    const minValue      = document.getElementById('minValue');
+    const maxValue      = document.getElementById('maxValue');
+    const saveBtn       = document.getElementById('saveRange');
+    const statusMsg     = document.getElementById('statusMsg');
+    const errorMsg      = document.getElementById('errorMsg');
 
-    document.getElementById('saveRange').addEventListener('click', () => {
-      const unit    = +document.getElementById('unitSelect').value;
-      const channel = +document.getElementById('channelSelect').value;
-      const maMin   = parseFloat(document.getElementById('maMin').value);
-      const maMax   = parseFloat(document.getElementById('maMax').value);
-      const physMin = parseFloat(document.getElementById('physMin').value);
-      const physMax = parseFloat(document.getElementById('physMax').value);
+    saveBtn.addEventListener('click', () => {
+      const unit    = +unitSelect.value;
+      const channel = +channelSelect.value;
+      const phys1   = parseFloat(minValue.value);
+      const phys2   = parseFloat(maxValue.value);
 
-      // hide previous messages
-      document.getElementById('statusMsg').style.display = 'none';
-      document.getElementById('errorMsg').style.display  = 'none';
+      // Validatie
+      if (isNaN(phys1) || isNaN(phys2)) {
+        errorMsg.textContent   = 'Vul zowel min als max sensorwaarde in.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      errorMsg.style.display  = 'none';
+      statusMsg.style.display = 'none';
 
-      socket.emit('set_cal_simple', {
-        unit_index: unit,
-        channel:    channel,
-        ma_min:     maMin,
-        ma_max:     maMax,
-        phys_min:   physMin,
-        phys_max:   physMax
+      // raw1=0, raw2=4095
+      socket.emit('set_cal_points', {
+        unit: unit,
+        channel: channel,
+        raw1: 0,
+        phys1: phys1,
+        raw2: 4095,
+        phys2: phys2
       });
     });
 
     socket.on('cal_saved', info => {
-      const msg = `Range opgeslagen (module ${info.unit}, kanaal ${info.channel}): `
-                + `scale=${info.scale.toFixed(4)}, offset=${info.offset.toFixed(2)}`;
-      const el  = document.getElementById('statusMsg');
-      el.textContent = msg;
-      el.style.display = 'block';
+      statusMsg.textContent   = 
+        `Range opgeslagen voor module ${info.unit}, kanaal ${info.channel}: ` +
+        `scale=${info.scale.toFixed(4)}, offset=${info.offset.toFixed(2)}`;
+      statusMsg.style.display = 'block';
     });
 
     socket.on('cal_error', err => {
-      const el = document.getElementById('errorMsg');
-      el.textContent = `Fout bij opslaan: ${err.error}`;
-      el.style.display = 'block';
+      errorMsg.textContent   = `Fout bij opslaan: ${err.error}`;
+      errorMsg.style.display = 'block';
     });
   </script>
 </body>
