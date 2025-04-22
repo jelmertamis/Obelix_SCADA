@@ -14,11 +14,13 @@
       font-size: 0.9rem;
       border-radius: 4px;
       border: none;
-      background-color: #007bff;
       color: white;
       cursor: pointer;
     }
-    button:hover { background-color: #0056b3; }
+    .btn-on { background-color: #28a745; }    /* groen */
+    .btn-off { background-color: #dc3545; }   /* rood */
+    .btn-on:hover { background-color: #218838; }
+    .btn-off:hover { background-color: #c82333; }
     .module-name { font-weight: bold; }
   </style>
 </head>
@@ -30,7 +32,7 @@
       <tr>
         <th>Module (Slave ID)</th>
         {% for ch in range(8) %}
-        <th>Coil {{ ch }}</th>
+          <th>Coil {{ ch }}</th>
         {% endfor %}
       </tr>
     </thead>
@@ -39,12 +41,15 @@
       <tr>
         <td class="module-name">{{ r.name }} ({{ r.slave_id }})</td>
         {% for ch in range(8) %}
+        {% set state = r.states[ch] %}
         <td>
           <form method="post" action="{{ url_for('relays') }}">
             <input type="hidden" name="unit_idx" value="{{ r.idx }}">
             <input type="hidden" name="coil_idx" value="{{ ch }}">
-            <button name="action" value="toggle">
-              {{ r.states[ch] }}
+            <button
+              name="action" value="toggle"
+              class="{{ 'btn-on' if state == 'ON' else 'btn-off' }}">
+              {{ state }}
             </button>
           </form>
         </td>
