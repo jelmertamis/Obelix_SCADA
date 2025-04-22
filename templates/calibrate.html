@@ -13,33 +13,27 @@
     button {
       padding:0.3rem 0.6rem;
       font-size:0.9rem;
-      border:none;
-      border-radius:4px;
-      background:#007bff;
-      color:white;
+      border:none; border-radius:4px;
+      background:#007bff; color:white;
       cursor:pointer;
     }
     button:hover { background:#0056b3; }
     .status { color:green; font-size:0.9rem; }
     .error  { color:red;   font-size:0.9rem; }
+    a.btn-back { display:block; text-align:center; margin-bottom:1rem; }
   </style>
 </head>
 <body>
   <h1>Sensor Range Instellingen</h1>
-  <p style="text-align:center;"><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
+  <a href="{{ url_for('index') }}" class="btn-back">← Terug naar Dashboard</a>
 
   <table>
     <thead>
       <tr>
-        <th>Module</th>
-        <th>Slave ID</th>
-        <th>Kanaal</th>
-        <th>Min waarde</th>
-        <th>Max waarde</th>
-        <th>Slope</th>
-        <th>Offset</th>
-        <th>Actie</th>
-        <th>Feedback</th>
+        <th>Module</th><th>Slave ID</th><th>Kanaal</th>
+        <th>Min waarde</th><th>Max waarde</th>
+        <th>Slope</th><th>Offset</th>
+        <th>Actie</th><th>Feedback</th>
       </tr>
     </thead>
     <tbody>
@@ -50,8 +44,8 @@
             <td>{{ units[i]['name'] }}</td>
             <td>{{ units[i]['slave_id'] }}</td>
             <td>{{ ch }}</td>
-            <td><input type="number" step="0.1" class="minVal" placeholder="0.0"></td>
-            <td><input type="number" step="0.1" class="maxVal" placeholder="120.0"></td>
+            <td><input type="number" step="0.1" class="minVal"></td>
+            <td><input type="number" step="0.1" class="maxVal"></td>
             <td class="slope">—</td>
             <td class="offset">—</td>
             <td><button class="saveBtn">Opslaan</button></td>
@@ -65,76 +59,69 @@
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    const RAW1 = 819;    // raw voor 4 mA
-    const RAW2 = 4095;   // raw voor 20 mA
+    const RAW1 = 819, RAW2 = 4095;
     const socket = io('/cal');
+    const rows = document.querySelectorAll('tbody tr');
 
-    // Zodra we init_cal ontvangen, vullen we slope/offset én berekende ranges
+    // Init: vul uit DB
     socket.on('init_cal', data => {
-      document.querySelectorAll('tbody tr').forEach(row => {
-        const unit    = row.dataset.unit;
-        const channel = row.dataset.channel;
-        const key     = `${unit}-${channel}`;
+      rows.forEach(row => {
+        const key = `${row.dataset.unit}-${row.dataset.channel}`;
         if (data[key]) {
-          const { scale, offset } = data[key];
-          // toon slope & offset
+          const { scale, offset, phys_min, phys_max } = data[key];
           row.querySelector('.slope').textContent  = scale.toFixed(4);
           row.querySelector('.offset').textContent = offset.toFixed(2);
-          // bereken en vul min/max
-          row.querySelector('.minVal').value = (scale*RAW1 + offset).toFixed(2);
-          row.querySelector('.maxVal').value = (scale*RAW2 + offset).toFixed(2);
+          row.querySelector('.minVal').value        = phys_min.toFixed(2);
+          row.querySelector('.maxVal').value        = phys_max.toFixed(2);
         }
       });
     });
 
-    // Afhandelen van opslaan per rij
-    document.querySelectorAll('.saveBtn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const row      = btn.closest('tr');
-        const unit     = parseInt(row.dataset.unit);
-        const channel  = parseInt(row.dataset.channel);
-        const phys1    = parseFloat(row.querySelector('.minVal').value);
-        const phys2    = parseFloat(row.querySelector('.maxVal').value);
-        const feedback = row.querySelector('.feedback');
-
-        // Validatie
-        if (isNaN(phys1) || isNaN(phys2)) {
-          feedback.textContent = 'Vul beide waarden in';
-          feedback.className = 'feedback error';
-          return;
-        }
-        feedback.textContent = '';
-
-        // Verzenden
-        socket.emit('set_cal_points', {
-          unit:    unit,
-          channel: channel,
-          raw1:    RAW1,
-          phys1:   phys1,
-          raw2:    RAW2,
-          phys2:   phys2
-        });
-      });
-    });
-
-    // Na succesvolle opslag, update slope/offset en geef feedback
+    // Na opslaan: update die rij
     socket.on('cal_saved', info => {
       const sel = `tr[data-unit="${info.unit}"][data-channel="${info.channel}"]`;
       const row = document.querySelector(sel);
-      row.querySelector('.slope').textContent  = info.scale.toFixed(4);
-      row.querySelector('.offset').textContent = info.offset.toFixed(2);
+      row.querySelector('.slope').textContent    = info.scale.toFixed(4);
+      row.querySelector('.offset').textContent   = info.offset.toFixed(2);
+      row.querySelector('.minVal').value         = info.phys_min.toFixed(2);
+      row.querySelector('.maxVal').value         = info.phys_max.toFixed(2);
       const fb = row.querySelector('.feedback');
-      fb.textContent = '✔ Opgeslagen';
-      fb.className = 'feedback status';
+      fb.textContent = '✔︎ Opslaan gelukt';
+      fb.className   = 'feedback status';
       setTimeout(() => fb.textContent = '', 3000);
     });
 
     socket.on('cal_error', err => {
-      alert('Fout bij kalibratie: ' + err.error);
+      alert('Kalibratie fout: ' + err.error);
     });
 
-    // Vraag bij laden en connect initiële kalibraties op
-    socket.emit('init_cal');
+    // Button‑handler
+    rows.forEach(row => {
+      row.querySelector('.saveBtn').addEventListener('click', () => {
+        const unit    = +row.dataset.unit;
+        const channel = +row.dataset.channel;
+        const phys1   = parseFloat(row.querySelector('.minVal').value);
+        const phys2   = parseFloat(row.querySelector('.maxVal').value);
+        const fb      = row.querySelector('.feedback');
+
+        if (isNaN(phys1) || isNaN(phys2)) {
+          fb.textContent = 'Vul beide waarden in';
+          fb.className   = 'feedback error';
+          return;
+        }
+        fb.textContent = '';
+
+        socket.emit('set_cal_points', {
+          unit, channel,
+          raw1: RAW1, phys1,
+          raw2: RAW2, phys2
+        });
+      });
+    });
+
+    // Vraag init
+    socket.emit('connect');    // zorgt dat ws_cal_connect in app.py vuurt
+    socket.emit('init_cal');   // en vraagt de bestaande ranges
   </script>
 </body>
 </html>
