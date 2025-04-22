@@ -237,23 +237,30 @@ def relays():
         unit_idx = int(request.form['unit_idx'])
         current_unit = unit_idx
         action = request.form['action']
-        if action=='on':    set_relay_state(True)
-        if action=='off':   set_relay_state(False)
-        if action=='toggle':toggle_relay()
+        if action=='on':     set_relay_state(True)
+        if action=='off':    set_relay_state(False)
+        if action=='toggle': toggle_relay()
         time.sleep(0.1)
         return redirect(url_for('relays'))
 
-    relay_status=[]
+    relay_status = []
     prev = current_unit
     for i,u in enumerate(UNITS):
         if u['type']=='relay':
-            current_unit=i
+            current_unit = i
             state = get_coil_status()
             relay_status.append({
-                'idx':i,'name':u['name'],'slave_id':u['slave_id'],'state':state
+                'idx':        i,
+                'name':       u['name'],
+                'slave_id':   u['slave_id'],
+                'state':      state,
+                'coil_number': COIL_ADDRESS
             })
     current_unit = prev
-    return render_template('relays.html', relays=relay_status)
+    return render_template('relays.html',
+                           relays=relay_status,
+                           coil_number=COIL_ADDRESS)
+
 
 @app.route('/update_coil', methods=['POST'])
 def update_coil():
