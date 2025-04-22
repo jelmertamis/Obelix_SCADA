@@ -1,13 +1,10 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Relay &amp; Analog Control</title>
-</head>
+<head><title>Relay &amp; Analog Control</title></head>
 <body>
   <h1>Relay &amp; Analog Control</h1>
   <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
-  <!-- Pas hier: gebruik dict-toegang -->
-  <p>Current Unit: {{ units[current_unit]['name'] }}</p>
+  <p>Current Unit: {{ current_unit_name }}</p>
 
   {% if unit_type == 'relay' %}
     <p>Coil #{{ coil_number }} — State: {{ status }}</p>
@@ -23,7 +20,7 @@
     <select name="unit_index">
       {% for u in units %}
         <option value="{{ loop.index0 }}"
-                {% if loop.index0 == current_unit %}selected{% endif %}>
+                {% if loop.index0 == current_unit_index %}selected{% endif %}>
           {{ u['name'] }}
         </option>
       {% endfor %}

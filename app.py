@@ -1,4 +1,3 @@
-# app.py
 import os
 import sqlite3
 import time
@@ -63,10 +62,8 @@ def init_db():
 def get_calibration(unit_index, channel):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('''
-        SELECT scale, offset FROM calibration
-        WHERE unit_index = ? AND channel = ?
-    ''', (unit_index, channel))
+    c.execute('SELECT scale, offset FROM calibration WHERE unit_index=? AND channel=?',
+              (unit_index, channel))
     row = c.fetchone()
     conn.close()
     return {'scale': row[0], 'offset': row[1]} if row else {'scale':1.0, 'offset':0.0}
@@ -78,8 +75,8 @@ def set_calibration_db(unit_index, channel, scale, offset):
         INSERT INTO calibration (unit_index, channel, scale, offset)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(unit_index, channel) DO UPDATE SET
-            scale=excluded.scale,
-            offset=excluded.offset
+          scale=excluded.scale,
+          offset=excluded.offset
     ''', (unit_index, channel, scale, offset))
     conn.commit()
     conn.close()
@@ -89,8 +86,8 @@ def set_calibration_db(unit_index, channel, scale, offset):
 # ----------------------------
 def log(message):
     global log_messages
-    timestamp = time.strftime("%H:%M:%S")
-    entry = f"[{timestamp}] {message}"
+    ts = time.strftime("%H:%M:%S")
+    entry = f"[{ts}] {message}"
     log_messages.append(entry)
     if len(log_messages) > MAX_LOG_MESSAGES:
         log_messages = log_messages[-MAX_LOG_MESSAGES:]
@@ -141,8 +138,7 @@ def toggle_relay():
         return
     try:
         cur = clients[current_unit].read_bit(COIL_ADDRESS, functioncode=1)
-        new = not cur
-        set_relay_state(new)
+        set_relay_state(not cur)
     except Exception as e:
         log(f"Fout toggle_relay: {e}")
 
@@ -157,7 +153,7 @@ def get_coil_status():
         return "Err"
 
 # ----------------------------
-# Analoge waarden
+# Analoge waarde
 # ----------------------------
 def get_analog_value():
     if fallback_mode:
@@ -169,7 +165,7 @@ def get_analog_value():
         return "Err"
 
 # ----------------------------
-# Routes
+# HTTP Routes
 # ----------------------------
 @app.route('/')
 def index():
@@ -177,12 +173,14 @@ def index():
         status = get_coil_status()
     else:
         status = get_analog_value()
-    return render_template('test_all_units.html',
+    return render_template(
+        'test_all_units.html',
         fallback_mode=fallback_mode,
         status=status,
         coil_number=COIL_ADDRESS,
         register_number=INPUT_REGISTER_ADDRESS,
-        current_unit=UNITS[current_unit]['name'],
+        current_unit_index=current_unit,
+        current_unit_name=UNITS[current_unit]['name'],
         unit_type=UNITS[current_unit]['type'],
         units=UNITS,
         log_messages=log_messages
@@ -193,8 +191,8 @@ def relay_action(action):
     if UNITS[current_unit]['type']!='relay':
         log("Geen relais hier")
         return redirect(url_for('index'))
-    if action=='on':  set_relay_state(True)
-    if action=='off': set_relay_state(False)
+    if action=='on':   set_relay_state(True)
+    if action=='off':  set_relay_state(False)
     if action=='toggle': toggle_relay()
     time.sleep(1)
     return redirect(url_for('index'))
@@ -227,10 +225,7 @@ def sensors():
         if unit['type']=='analog':
             for ch in range(4):
                 try:
-                    if fallback_mode:
-                        val = "Unknown"
-                    else:
-                        val = clients[i].read_register(ch, functioncode=4)
+                    val = "Unknown" if fallback_mode else clients[i].read_register(ch, functioncode=4)
                     log(f"Lezen {unit['name']} ch{ch} → {val}")
                 except Exception as e:
                     val = f"Err: {e}"
@@ -282,7 +277,5 @@ def on_set_cal(data):
 if __name__ == '__main__':
     init_db()
     init_modbus()
-    # default unit
-    global current_unit
     current_unit = 0
-    socketio.run(app, host='0.0.0.0', port=5001)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False, use_reloader=False)
