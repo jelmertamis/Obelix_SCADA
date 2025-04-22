@@ -214,6 +214,29 @@ def select_unit():
         log(f"Exception in select_unit: {e}")
     return redirect(url_for('index'))
 
+@app.route('/sensors')
+def sensors():
+    readings = []
+    for i, unit in enumerate(UNITS):
+        if unit['type'] == 'analog':
+            # wissel current_unit tijdelijk om zodat de helper de juiste client pakt
+            temp_unit = current_unit
+            try:
+                # haal de waarde op
+                global current_unit, current_register
+                current_unit = i
+                current_register = INPUT_REGISTER_ADDRESS
+                value = get_analog_value()
+            finally:
+                # zet current_unit weer terug
+                current_unit = temp_unit
+            readings.append({
+                'name': unit['name'],
+                'slave_id': unit['slave_id'],
+                'value': value
+            })
+    return render_template('sensors.html', readings=readings, fallback_mode=fallback_mode)
+
 if __name__ == "__main__":
     init_modbus()
     app.run(host='0.0.0.0', port=5001)

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Analog Sensors</title>
+    <meta http-equiv="refresh" content="10"> <!-- ververs elke 10 seconden -->
+    <style>
+      table { border-collapse: collapse; width: 50%; }
+      th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+      th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>Analog Sensor Uitlezingen</h1>
+    <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Sensor</th>
+                <th>Slave ID</th>
+                <th>Waarde</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sensor in readings %}
+            <tr>
+                <td>{{ sensor.name }}</td>
+                <td>{{ sensor.slave_id }}</td>
+                <td>{{ sensor.value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p><a href="{{ url_for('index') }}">Terug naar overzicht</a></p>
+</body>
+</html>
