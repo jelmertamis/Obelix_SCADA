@@ -310,7 +310,7 @@ def aio():
             'raw_in':   raw_in,
             'phys_in':  phys_in,
             'raw_out':  raw_out,
-            'phys_out': phys_out
+            'phys_out': phys_out,
             'percent_out': percent_out,   # %
         })
     return render_template('aio.html',
