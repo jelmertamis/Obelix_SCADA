@@ -121,7 +121,6 @@ def init_modbus():
             elif unit['type'] == 'analog':
                 clients[i].read_register(INPUT_REGISTER_ADDRESS, functioncode=4)
             elif unit['type'] == 'aio':
-                # test output register (Holding Reg 0, funccode 3)
                 clients[i].read_register(0, functioncode=3)
             log(f"Modbus OK voor {unit['name']} (ID {unit['slave_id']})")
         except Exception as e:
@@ -164,7 +163,7 @@ def get_coil_status():
         return "Err"
 
 # ----------------------------
-# Analog helpers
+# Analog helper
 # ----------------------------
 def get_analog_value():
     if fallback_mode:
@@ -185,11 +184,12 @@ def read_aio_output(unit_index, channel):
     return clients[unit_index].read_register(channel, functioncode=3)
 
 def set_aio_output(unit_index, channel, raw_value):
-    clients[unit_index].write_register(channel, raw_value, functioncode=6)
-    log(f"Set AIO ch{channel} → raw {raw_value}")
+    raw = max(0, min(4095, raw_value))  # clamp tussen 0–4095
+    clients[unit_index].write_register(channel, raw, functioncode=6)
+    log(f"EX04AIO ch{channel} OUTPUT → raw {raw} (counts)")
 
 # ----------------------------
-# Sensor monitor (background)
+# Sensor monitor
 # ----------------------------
 def sensor_monitor():
     global last_sensor_values
@@ -212,7 +212,6 @@ def sensor_monitor():
                             })
                         except Exception as e:
                             log(f"Fout sensor {unit['name']} ch{ch}: {e}")
-            # stuur **altijd** de volledige lijst
             socketio.emit('sensor_update', readings, namespace='/sensors')
         eventlet.sleep(2)
 
@@ -283,10 +282,9 @@ def aio():
     readings = []
     if request.method == 'POST':
         ch   = int(request.form['channel'])
-        phys = float(request.form['phys_value'])
-        cal  = get_calibration(idx, ch)
-        raw  = int((phys - cal['offset']) / cal['scale'])
-        set_aio_output(idx, ch, raw)
+        phys = float(request.form['phys_value'])  # in mA
+        raw_counts = int((phys / 20.0) * 4095)
+        set_aio_output(idx, ch, raw_counts)
         time.sleep(0.1)
     for ch in range(4):
         try:
@@ -294,7 +292,7 @@ def aio():
             raw_out  = read_aio_output(idx, ch)
             cal_in   = get_calibration(idx, ch)
             phys_in  = round(raw_in  * cal_in['scale']  + cal_in['offset'], 2)
-            phys_out = round(raw_out * cal_in['scale']  + cal_in['offset'], 2)
+            phys_out = round((raw_out / 4095.0) * 20.0, 2)
         except Exception as e:
             log(f"AIO fout ch{ch}: {e}")
             raw_in = raw_out = phys_in = phys_out = None
@@ -322,11 +320,11 @@ def on_cal_connect():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('SELECT unit_index, channel, scale, offset FROM calibration')
-    all_cal = {f"{r[0]}-{r[1]}": {'scale':r[2], 'offset':r[3]} for r in c.fetchall()}
+    all_cal = {f"{r[0]}-{r[1]}": {'{"scale": r[2], "offset": r[3]}'}} for r in c.fetchall()}
     conn.close()
     emit('init_cal', all_cal)
 
-# (get_raw and set_cal_points unchanged)
+# get_raw and set_cal_points as before
 
 # ----------------------------
 # WebSocket Sensors
