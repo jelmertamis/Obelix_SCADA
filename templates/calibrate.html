@@ -26,7 +26,7 @@
       Module:
       <select id="unitSelect">
         {% for i in range(units|length) %}
-          {% if units[i]['type'] == 'analog' %}
+          {% if units[i]['type']=='analog' %}
             <option value="{{ i }}">
               {{ units[i]['name'] }} (ID {{ units[i]['slave_id'] }})
             </option>
@@ -45,25 +45,37 @@
 
     <table>
       <thead>
-        <tr><th>Kalibreer‑punt</th><th>Raw</th><th>Physieke waarde</th><th>Actie</th></tr>
+        <tr>
+          <th>Punt</th>
+          <th>Ruwe waarde</th>
+          <th>Fysieke waarde (mA)</th>
+          <th>Actie</th>
+        </tr>
       </thead>
       <tbody>
+        <!-- Punt 1: default 4 mA -->
         <tr class="point-row">
-          <td>Punt 1</td>
+          <td>Min (4 mA)</td>
           <td id="raw1">—</td>
-          <td><input type="number" step="0.1" id="phys1" placeholder="bijv. 0.0"></td>
-          <td><button type="button" id="read1">Lees Raw</button></td>
+          <td>
+            <input type="number" step="0.1" id="phys1" value="4.0">
+          </td>
+          <td><button type="button" id="read1">Lees raw</button></td>
         </tr>
+        <!-- Punt 2: default 20 mA -->
         <tr class="point-row">
-          <td>Punt 2</td>
+          <td>Max (20 mA)</td>
           <td id="raw2">—</td>
-          <td><input type="number" step="0.1" id="phys2" placeholder="bijv. 100.0"></td>
-          <td><button type="button" id="read2">Lees Raw</button></td>
+          <td>
+            <input type="number" step="0.1" id="phys2" value="20.0">
+          </td>
+          <td><button type="button" id="read2">Lees raw</button></td>
         </tr>
       </tbody>
     </table>
+
     <div style="margin-top:1rem;">
-      <button type="button" id="saveCal">Opslaan Kalibratie</button>
+      <button type="button" id="saveCal">Opslaan Range</button>
     </div>
     <div id="statusMsg" class="status" style="display:none;"></div>
     <div id="errorMsg"  class="error"  style="display:none;"></div>
@@ -72,17 +84,16 @@
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
     const socket = io('/cal');
-    let initCal = {};
 
+    // Ontvang bestaande kalibraties (optioneel te tonen)
     socket.on('init_cal', data => {
-      initCal = data;
-      console.log('Bestaande kalibraties:', initCal);
+      console.log('Bestaande kalibraties:', data);
     });
 
     function readRaw(point) {
-      const unit    = parseInt(document.getElementById('unitSelect').value);
-      const channel = parseInt(document.getElementById('channelSelect').value);
-      socket.emit('get_raw', { unit_index: unit, channel: channel, point });
+      const unit    = +document.getElementById('unitSelect').value;
+      const channel = +document.getElementById('channelSelect').value;
+      socket.emit('get_raw', { unit_index: unit, channel, point });
     }
 
     socket.on('raw_value', msg => {
@@ -94,28 +105,32 @@
     document.getElementById('read2').addEventListener('click', () => readRaw(2));
 
     document.getElementById('saveCal').addEventListener('click', () => {
-      const unit     = parseInt(document.getElementById('unitSelect').value);
-      const channel  = parseInt(document.getElementById('channelSelect').value);
-      const raw1     = parseFloat(document.getElementById('raw1').textContent);
-      const phys1    = parseFloat(document.getElementById('phys1').value);
-      const raw2     = parseFloat(document.getElementById('raw2').textContent);
-      const phys2    = parseFloat(document.getElementById('phys2').value);
+      const unit    = +document.getElementById('unitSelect').value;
+      const channel = +document.getElementById('channelSelect').value;
+      const raw1    = parseFloat(document.getElementById('raw1').textContent);
+      const phys1   = parseFloat(document.getElementById('phys1').value);
+      const raw2    = parseFloat(document.getElementById('raw2').textContent);
+      const phys2   = parseFloat(document.getElementById('phys2').value);
+
+      // Hide previous messages
       document.getElementById('statusMsg').style.display = 'none';
       document.getElementById('errorMsg').style.display  = 'none';
+
       socket.emit('set_cal_points', { unit, channel, raw1, phys1, raw2, phys2 });
     });
 
     socket.on('cal_saved', info => {
-      document.getElementById('statusMsg').textContent =
-        `Kalibratie opgeslagen (module ${info.unit}, kanaal ${info.channel}): ` +
-        `scale=${info.scale.toFixed(4)}, offset=${info.offset.toFixed(2)}`;
-      document.getElementById('statusMsg').style.display = 'block';
+      const msg = `Range opgeslagen (module ${info.unit}, kanaal ${info.channel}): `
+                + `scale=${info.scale.toFixed(4)}, offset=${info.offset.toFixed(2)}`;
+      const el  = document.getElementById('statusMsg');
+      el.textContent = msg;
+      el.style.display = 'block';
     });
 
     socket.on('cal_error', err => {
-      document.getElementById('errorMsg').textContent =
-        `Fout bij kalibratie: ${err.error}`;
-      document.getElementById('errorMsg').style.display = 'block';
+      const el = document.getElementById('errorMsg');
+      el.textContent = `Fout bij opslaan: ${err.error}`;
+      el.style.display = 'block';
     });
   </script>
 </body>
