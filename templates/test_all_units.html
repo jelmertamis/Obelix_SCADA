@@ -4,24 +4,52 @@
   <meta charset="utf-8">
   <title>Obelix SCADA Dashboard</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
-    h1 { margin-bottom: 0.5rem; }
-    ul { list-style: none; padding: 0; }
-    li { margin: 0.5rem 0; }
-    a { text-decoration: none; font-size: 1.1rem; color: #006; }
-    a:hover { text-decoration: underline; }
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 1.5rem;
+      font-size: 2.5rem;
+    }
+    .btn {
+      display: inline-block;
+      width: 250px;
+      margin: 1rem;
+      padding: 1rem;
+      font-size: 1.25rem;
+      text-decoration: none;
+      color: white;
+      background-color: #007bff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    .btn:hover {
+      background-color: #0056b3;
+    }
+    .btn:active {
+      background-color: #004494;
+    }
+    .btn-secondary {
+      background-color: #6c757d;
+    }
+    .btn-secondary:hover {
+      background-color: #5a6268;
+    }
   </style>
 </head>
 <body>
   <h1>Obelix SCADA Dashboard</h1>
-  <p>Fallback Mode: {{ 'Enabled' if fallback_mode else 'Disabled' }}</p>
+  <p>Fallback Mode: <strong>{{ 'Enabled' if fallback_mode else 'Disabled' }}</strong></p>
 
-  <h2>Module Overzicht</h2>
-  <ul>
-    <li>🔌 <a href="{{ url_for('relays') }}">Relay Controls</a></li>
-    <li>📊 <a href="{{ url_for('sensors') }}">Sensor Uitlezingen</a></li>
-    <li>⚙️ <a href="{{ url_for('aio') }}">EX04AIO I/O Interface</a></li>
-    <li>🛠️ <a href="{{ url_for('calibrate') }}">Kalibratie Interface</a></li>
-  </ul>
+  <div>
+    <a href="{{ url_for('relays') }}" class="btn">🔌 Relay Controls</a>
+    <a href="{{ url_for('sensors') }}" class="btn">📊 Sensor Uitlezingen</a>
+    <a href="{{ url_for('calibrate') }}" class="btn btn-secondary">⚙️ Sensor Range Instellingen</a>
+    <a href="{{ url_for('aio') }}" class="btn">⚙️ EX04AIO I/O Interface</a>
+  </div>
 </body>
 </html>
