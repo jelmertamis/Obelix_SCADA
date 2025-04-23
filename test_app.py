@@ -66,9 +66,12 @@ def init_modbus_clients():
 
 def sensor_monitor(clients):
     while True:
-        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        print(f"\n[{timestamp}] Uitlezing analoge sensoren:")
+        print("\n--- Uitlezing alleen ID 5 ---")
         for idx, (u, inst) in enumerate(zip(ANALOG_UNITS, clients)):
+            # sla alle units over behalve ID 5
+            if u['slave_id'] != 5:
+                continue
+
             for ch in range(CHANNELS_PER_UNIT):
                 try:
                     raw = inst.read_register(
@@ -81,8 +84,8 @@ def sensor_monitor(clients):
                     print(f"  {u['name']} (ID {u['slave_id']}) Ch{ch}: raw={raw:5d}  value={val:8.2f}")
                 except Exception as e:
                     log.warning(f"  Fout bij {u['name']} Ch{ch}: {e}")
-        print('-' * 40)
-        time.sleep(3)
+        time.sleep(2)
+
 
 if __name__ == '__main__':
     clients = init_modbus_clients()
