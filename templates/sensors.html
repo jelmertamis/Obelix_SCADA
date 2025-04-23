@@ -7,7 +7,7 @@
   .sensor-table {
     border-collapse: collapse;
     width: 100%;
-    max-width: 800px;
+    max-width: 900px;
     margin: 1rem auto;
   }
   .sensor-table th,
@@ -31,20 +31,15 @@
   <table id="sensorTable" class="sensor-table">
     <thead>
       <tr>
+        <th>Naam</th>
+        <th>Slave ID</th>
         <th>Kanaal</th>
         <th>Ruwe Waarde</th>
         <th>Gekalibreerd</th>
       </tr>
     </thead>
-    <tbody>
-      {# Vier vaste rijen voor kanaal 0–3 #}
-      {% for ch in range(4) %}
-      <tr>
-        <td>{{ ch }}</td>
-        <td id="raw-{{ ch }}">–</td>
-        <td id="val-{{ ch }}">–</td>
-      </tr>
-      {% endfor %}
+    <tbody id="sensorBody">
+      <tr><td colspan="5">Wachten op data…</td></tr>
     </tbody>
   </table>
 {% endblock %}
@@ -52,26 +47,39 @@
 {% block scripts %}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    // Maak verbinding met de /sensors-namespace
     const socket = io('/sensors');
+    const tbody  = document.getElementById('sensorBody');
 
     socket.on('connect', () => {
-      console.log('✅ WebSocket verbonden (namespace /sensors)');
+      console.log('✅ WebSocket verbonden op /sensors');
+      tbody.innerHTML = '<tr><td colspan="5">Verbonden – wachten op sensor_update…</td></tr>';
     });
 
     socket.on('sensor_update', readings => {
       console.log('🔔 sensor_update ontvangen:', readings);
+      if (readings.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">Geen sensoren gevonden.</td></tr>';
+        return;
+      }
+      // Bouw rijen
+      tbody.innerHTML = '';
       readings.forEach(r => {
-        // Update cellen corresponderend met het kanaal
-        const rawCell = document.getElementById(`raw-${r.channel}`);
-        const valCell = document.getElementById(`val-${r.channel}`);
-        if (rawCell) rawCell.textContent = r.raw;
-        if (valCell) valCell.textContent = r.value.toFixed(2);
+        const tr = document.createElement('tr');
+        ['name','slave_id','channel','raw','value'].forEach(key => {
+          const td = document.createElement('td');
+          let txt = r[key] !== null ? r[key] : '—';
+          // value afronden op 2 decimalen
+          if (key === 'value') txt = r.value.toFixed(2);
+          td.textContent = txt;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
       });
     });
 
     socket.on('disconnect', () => {
       console.warn('❌ WebSocket verbinding verbroken');
+      tbody.innerHTML = '<tr><td colspan="5">Verbinding verbroken.</td></tr>';
     });
   </script>
 {% endblock %}
