@@ -25,27 +25,49 @@
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    const socket = io('/sensors');
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM ready, maak WebSocket-connectie…');
+      const socket = io('/sensors');
 
-    socket.on('sensor_update', readings => {
-      const tbody = document.getElementById('sensorBody');
-      const noData = document.getElementById('no-data');
-      tbody.innerHTML = '';
+      socket.on('connect', () => {
+        console.log('✅ WebSocket verbonden op /sensors');
+      });
 
-      if (readings.length === 0) {
-        noData.hidden = false;
-      } else {
-        noData.hidden = true;
+      socket.on('connect_error', err => {
+        console.error('❌ WS connect error:', err);
+      });
+
+      socket.on('sensor_update', readings => {
+        console.log('🔔 ontvangen readings:', readings);
+
+        const tbody  = document.getElementById('sensorBody');
+        const noData = document.getElementById('no-data');
+        if (!tbody || !noData) {
+          console.error('🛑 DOM-elementen niet gevonden!');
+          return;
+        }
+
+        // Als er geen data is, toon fallback-message
+        if (readings.length === 0) {
+          tbody.innerHTML = '';
+          noData.hidden = false;
+          return;
+        } else {
+          noData.hidden = true;
+        }
+
+        // Vul de tabel
+        tbody.innerHTML = '';
         readings.forEach(r => {
           const tr = document.createElement('tr');
           ['name','slave_id','channel','raw','value'].forEach(key => {
             const td = document.createElement('td');
-            td.textContent = r[key] != null ? r[key] : '—';
+            td.textContent = (r[key] != null ? r[key] : '—');
             tr.appendChild(td);
           });
           tbody.appendChild(tr);
         });
-      }
+      });
     });
   </script>
 {% endblock %}
