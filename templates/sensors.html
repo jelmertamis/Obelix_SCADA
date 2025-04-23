@@ -1,16 +1,72 @@
 {% extends 'base.html' %}
 
-{% block title %}Test Sensors Pagina{% endblock %}
+{% block title %}Sensor Uitlezingen{% endblock %}
 
 {% block content %}
-  <h1>🧪 Test Sensors Pagina</h1>
-  <p>Als je dit ziet, wordt deze template geladen.</p>
+  <h1>Sensor Uitlezingen</h1>
+
+  <section class="sensor-container">
+    <table class="sensor-table">
+      <thead>
+        <tr>
+          <th>Naam</th>
+          <th>Slave ID</th>
+          <th>Kanaal</th>
+          <th>Ruwe Waarde</th>
+          <th>Gekalibreerd</th>
+        </tr>
+      </thead>
+      <tbody id="sensorBody">
+        <!-- Komt via WS -->
+      </tbody>
+    </table>
+    <p id="no-data" class="no-data" hidden>Geen sensoren gevonden.</p>
+  </section>
 {% endblock %}
 
 {% block scripts %}
   <script>
-    // Deze alert en console.log moet je meteen zien zodra de pagina laadt
-    alert('✅ Test-script uit sensors.html is geladen!');
-    console.log('✅ sensors.html script draait');
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('🛰️ Sensors-pagina klaar, maak WS…');
+      const socket = io('/sensors');
+
+      socket.on('connect', () => {
+        console.log('✅ WS verbonden op /sensors');
+      });
+
+      socket.on('connect_error', err => {
+        console.error('❌ WS connect error:', err);
+      });
+
+      socket.on('sensor_update', readings => {
+        console.log('🔔 sensor_update ontvangen:', readings);
+
+        const tbody  = document.getElementById('sensorBody');
+        const noData = document.getElementById('no-data');
+        if (!tbody || !noData) {
+          console.error('🛑 DOM-elementen niet gevonden');
+          return;
+        }
+
+        if (readings.length === 0) {
+          tbody.innerHTML = '';
+          noData.hidden = false;
+          return;
+        }
+        noData.hidden = true;
+
+        // Tabelrijen aanmaken
+        tbody.innerHTML = '';
+        readings.forEach(r => {
+          const tr = document.createElement('tr');
+          ['name','slave_id','channel','raw','value'].forEach(key => {
+            const td = document.createElement('td');
+            td.textContent = r[key] != null ? r[key] : '—';
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      });
+    });
   </script>
 {% endblock %}
