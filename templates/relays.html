@@ -6,6 +6,33 @@
   <title>Relay Control</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
   <style>
+    body {
+      font-family: sans-serif;
+      padding: 1em;
+    }
+    .back-button {
+      display: inline-block;
+      margin-bottom: 1em;
+      padding: .5em 1em;
+      background: #2196f3;
+      color: white;
+      text-decoration: none;
+      border-radius: .25em;
+      font-weight: bold;
+      transition: opacity .2s;
+    }
+    .back-button:hover {
+      opacity: .8;
+    }
+    .relay-unit {
+      margin-bottom: 1.5em;
+      padding: .75em;
+      border: 1px solid #ccc;
+      border-radius: .5em;
+    }
+    .relay-unit h3 {
+      margin-top: 0;
+    }
     .onoff-button {
       padding: .5em 1em;
       margin: .2em;
@@ -28,15 +55,14 @@
     .onoff-button:hover {
       opacity: .8;
     }
-    .relay-unit {
-      margin-bottom: 1em;
-      padding: .5em;
-      border: 1px solid #ccc;
-      border-radius: .5em;
-    }
   </style>
 </head>
 <body>
+
+  <!-- Terug naar Dashboard knop -->
+  <a href="/" class="back-button">← Terug naar Dashboard</a>
+
+  <!-- Relay knoppen -->
   <div id="relays-container">
     {% for unit in relays %}
       <div class="relay-unit" data-unit-idx="{{ unit.idx }}">
