@@ -8,15 +8,15 @@
     {% for r in relays %}
       <div class="relay-module" data-unit-idx="{{ r.idx }}">
         <div class="relay-header">
-          <h2>{{ r.name }}<br><small>(ID {{ r.id }})</small></h2>
+          <h2>{{ r.name }}<br><small>(ID {{ r.slave_id }})</small></h2>
         </div>
         <div class="relay-buttons">
-          {% for coil in r.coils %}
+          {% for coil in range(8) %}
             <button
-              class="onoff-button {{ 'on' if coil else 'off' }}"
+              class="onoff-button off"
               data-unit-idx="{{ r.idx }}"
-              data-coil-idx="{{ loop.index0 }}">
-              {{ 'ON' if coil else 'OFF' }}
+              data-coil-idx="{{ coil }}">
+              –  
             </button>
           {% endfor %}
         </div>
@@ -29,54 +29,46 @@
 {% block scripts %}
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const socket = io("/relays");
-    const container = document.getElementById("relaysContainer");
+document.addEventListener("DOMContentLoaded", () => {
+  const socket = io("/relays"),
+        container = document.getElementById("relaysContainer");
 
-    // 1) Init states
-    socket.on("init_relays", relays => {
-      relays.forEach(r => {
-        const moduleEl = container.querySelector(
-          `.relay-module[data-unit-idx="${r.idx}"]`
-        );
-        if (!moduleEl) return;
-        r.states.forEach((s, coil) => {
-          const btn = moduleEl.querySelector(
-            `.onoff-button[data-coil-idx="${coil}"]`
-          );
-          btn.classList.toggle("on",  s === "ON");
-          btn.classList.toggle("off", s !== "ON");
-          btn.textContent = s;
-        });
+  // 1) INIT: haal alle statussen asynchroon op
+  socket.on("init_relays", relays => {
+    relays.forEach(r => {
+      const moduleEl = container.querySelector(`.relay-module[data-unit-idx="${r.idx}"]`);
+      if (!moduleEl) return;
+      r.states.forEach((s, coil) => {
+        const btn = moduleEl.querySelector(`.onoff-button[data-coil-idx="${coil}"]`);
+        btn.classList.toggle("on",  s==="ON");
+        btn.classList.toggle("off", s!=="ON");
+        btn.textContent = s;
       });
     });
-
-    // 2) Toggle on click
-    container.addEventListener("click", e => {
-      if (!e.target.matches(".onoff-button")) return;
-      const btn     = e.target;
-      const unitIdx = Number(btn.dataset.unitIdx);
-      const coilIdx = Number(btn.dataset.coilIdx);
-      socket.emit("toggle_relay", { unit_idx: unitIdx, coil_idx: coilIdx });
-    });
-
-    // 3) Update after server confirms
-    socket.on("relay_toggled", msg => {
-      const moduleEl = container.querySelector(
-        `.relay-module[data-unit-idx="${msg.unit_idx}"]`
-      );
-      if (!moduleEl) return;
-      const btn = moduleEl.querySelector(
-        `.onoff-button[data-coil-idx="${msg.coil_idx}"]`
-      );
-      btn.classList.toggle("on",  msg.state === "ON");
-      btn.classList.toggle("off", msg.state !== "ON");
-      btn.textContent = msg.state;
-    });
-
-    socket.on("relay_error", err => {
-      alert("Fout bij schakelen: " + err.error);
-    });
   });
+
+  // 2) Klikken stuurt toggle
+  container.addEventListener("click", e => {
+    if(!e.target.matches(".onoff-button")) return;
+    const btn     = e.target,
+          unitIdx = Number(btn.dataset.unitIdx),
+          coilIdx = Number(btn.dataset.coilIdx);
+    socket.emit("toggle_relay", {unit_idx:unitIdx, coil_idx:coilIdx});
+  });
+
+  // 3) Update na bevestiging
+  socket.on("relay_toggled", msg => {
+    const btn = container
+      .querySelector(`.relay-module[data-unit-idx="${msg.unit_idx}"]`)
+      .querySelector(`.onoff-button[data-coil-idx="${msg.coil_idx}"]`);
+    btn.classList.toggle("on",  msg.state==="ON");
+    btn.classList.toggle("off", msg.state!=="ON");
+    btn.textContent = msg.state;
+  });
+
+  socket.on("relay_error", err => {
+    console.warn("Relay error:", err.error);
+  });
+});
 </script>
 {% endblock %}

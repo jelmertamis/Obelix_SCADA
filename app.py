@@ -343,19 +343,12 @@ def index():
 
 @app.route('/relays')
 def relays():
-    # expliciete lijst van slave IDs die je als relays wilt tonen
-    wanted = {1, 2, 3, 4, 9}
-
-    relay_units = []
-    for i, u in enumerate(UNITS):
-        if u['slave_id'] in wanted:
-            states = read_relay_states(i)
-            relay_units.append({
-                'idx':   i,
-                'id':    u['slave_id'],
-                'name':  u['name'],
-                'coils': [s == 'ON' for s in states]
-            })
+    # alleen de metadata, geen Modbus-calls
+    relay_units = [
+        {'idx': i, 'slave_id': u['slave_id'], 'name': u['name']}
+        for i,u in enumerate(UNITS)
+        if u['type']=='relay'
+    ]
     return render_template('relays.html', relays=relay_units)
 
 
