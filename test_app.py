@@ -1,65 +1,63 @@
-# test_app_modbus.py
-# Eenvoudige testapp voor Modbus-ANSI sensoren (EX04AIS) uitlezen via seriële poort
+# test_app_modbus_minimal.py
+# Eenvoudige testapp voor EX04AIS sensoren uitlezen met MinimalModbus
 
 import time
-from pymodbus.client.sync import ModbusSerialClient as ModbusClient
+import minimalmodbus
 import logging
+import serial
 
-# Logging instellen om Modbus-communicatie te zien
-logging.basicConfig()
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+# Logging om te zien wat MinimalModbus doet
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
-# Configuratie Modbus-serial
-PORT = '/dev/ttyUSB0'      # Pas aan naar jouw poort, bijv. 'COM3' op Windows
+# Seriële poort-configuratie (pas PORT aan naar jouw systeem, bijv. 'COM3')
+PORT = '/dev/ttyUSB0'
 BAUDRATE = 19200           # Baudrate van je Modbus-module
-PARITY = 'N'               # Pariteit: N=none, E=even, O=odd
-STOPBITS = 1               # Stopbits
-BYTESIZE = 8               # Databits
-TIMEOUT = 1                # Timeout in seconden
+PARITY   = serial.PARITY_NONE  # Geen pariteit
+STOPBITS = 1
+BYTESIZE = 8
+TIMEOUT  = 1               # Timeout in seconden
 
-# Slave IDs en aantal kanalen per module
-SLAVE_UNITS = [5, 6, 7, 8]  # EX04AIS units
-CHANNELS_PER_UNIT = 4       # aantal analoge ingangen per unit
+# Welke slave IDs en hoeveel kanalen per module
+SLAVE_UNITS = [5, 6, 7, 8]
+CHANNELS_PER_UNIT = 4
 
 def main():
-    # Maak Modbus client aan
-    client = ModbusClient(
-        method='rtu',
-        port=PORT,
-        baudrate=BAUDRATE,
-        parity=PARITY,
-        stopbits=STOPBITS,
-        bytesize=BYTESIZE,
-        timeout=TIMEOUT
-    )
-    if not client.connect():
-        log.error(f"Kan Modbus-poort {PORT} niet openen.")
-        return
-    log.info(f"Verbonden met Modbus op {PORT} (baud={BAUDRATE})")
-
+    # Maak voor elke slave een MinimalModbus Instrument
+    instruments = {}
+    for sid in SLAVE_UNITS:
+        inst = minimalmodbus.Instrument(PORT, sid)
+        inst.serial.baudrate   = BAUDRATE
+        inst.serial.parity     = PARITY
+        inst.serial.stopbits   = STOPBITS
+        inst.serial.bytesize   = BYTESIZE
+        inst.serial.timeout    = TIMEOUT
+        inst.mode              = minimalmodbus.MODE_RTU
+        instruments[sid] = inst
+        log.info(f"Instrument aangemaakt voor slave {sid} op {PORT}")
+    
     try:
         while True:
-            for slave_id in SLAVE_UNITS:
+            for sid, inst in instruments.items():
                 for ch in range(CHANNELS_PER_UNIT):
-                    # EX04AIS gebruikt function code 4 (input registers)
-                    result = client.read_input_registers(address=ch, count=1, unit=slave_id)
-                    if result.isError():
-                        log.warning(f"Fout bij lezen slave {slave_id} ch{ch}: {result}")
-                        continue
-                    raw = result.registers[0]
-                    # Simpele kalibratie, vervang door jouw eigen functie
-                    scale = 1.0
-                    offset = 0.0
-                    value = raw * scale + offset
-                    print(f"Slave {slave_id} Ch{ch}: raw={raw}  value={value}")
+                    try:
+                        # Lees input-register (function code 4), geen decimalen
+                        raw = inst.read_input_register(registeraddress=ch,
+                                                       number_of_decimals=0,
+                                                       functioncode=4)
+                        # Kalibreer (pas scale/offset aan naar jouw situatie)
+                        scale = 1.0
+                        offset = 0.0
+                        value = raw * scale + offset
+                        print(f"Slave {sid} Ch{ch}: raw={raw}  value={value}")
+                    except Exception as e:
+                        log.warning(f"Fout bij lezen slave {sid} ch{ch}: {e}")
             print('-' * 40)
             time.sleep(1)
     except KeyboardInterrupt:
         log.info("Stoppen op gebruikersverzoek.")
     finally:
-        client.close()
-        log.info("Modbus client gesloten.")
+        log.info("Klaar, sluit applicatie.")
 
 if __name__ == '__main__':
     main()
