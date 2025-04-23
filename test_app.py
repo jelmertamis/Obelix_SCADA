@@ -1,88 +1,62 @@
-# test_app.py
-# Eenvoudige Flask-SocketIO app voor het testen van de sensor-pagina en WebSocket-communicatie
-
-from flask import Flask, render_template_string
-from flask_socketio import SocketIO
-import threading
+# read_sensors.py
 import time
-import random
+import minimalmodbus
+import serial
+import logging
 
-app = Flask(__name__)
-socketio = SocketIO(app)
+# Logging aanzetten (optioneel)
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
-# De HTML-pagina met je sensortabel en client-side JS
-PAGE = """
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Test SCADA Sensors</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 1rem; }
-    table { border-collapse: collapse; width: 100%; max-width: 600px; }
-    th, td { border: 1px solid #ccc; padding: .5rem; }
-    th { background: #007bff; color: #fff; }
-  </style>
-</head>
-<body>
-  <h1>Test Sensor Uitlezingen</h1>
-  <p>Deze pagina gebruikt WebSockets om sensor-data te tonen.</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Naam</th><th>Slave ID</th><th>Kanaal</th><th>Ruwe Waarde</th><th>Gekalibreerd</th>
-      </tr>
-    </thead>
-    <tbody id="sensorBody"></tbody>
-  </table>
+# Seriële poort-configuratie
+PORT      = '/dev/ttyUSB0'           # of 'COM3' op Windows
+BAUDRATE  = 19200
+PARITY    = serial.PARITY_NONE
+STOPBITS  = 1
+BYTESIZE  = 8
+TIMEOUT   = 1                        # seconde
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('🔌 Verbinding opzetten...');
-      const socket = io();
+# Welke slave IDs en kanalen
+SLAVE_UNITS         = [5, 6, 7, 8]   # jouw EX04AIS units
+CHANNELS_PER_UNIT   = 4              # 4 ingangen per module
 
-      socket.on('connect', () => console.log('✅ Verbonden met server'));
-      socket.on('sensor_update', readings => {
-        console.log('🔔 sensor_update:', readings);
-        const tbody = document.getElementById('sensorBody');
-        tbody.innerHTML = '';
-        readings.forEach(r => {
-          const tr = document.createElement('tr');
-          ['name','slave_id','channel','raw','value'].forEach(k => {
-            const td = document.createElement('td');
-            td.textContent = r[k] != null ? r[k] : '—';
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        });
-      });
-    });
-  </script>
-</body>
-</html>
-"""
+def main():
+    # Maak per slave een instrument
+    instruments = {}
+    for sid in SLAVE_UNITS:
+        inst = minimalmodbus.Instrument(PORT, sid)
+        inst.serial.baudrate   = BAUDRATE
+        inst.serial.parity     = PARITY
+        inst.serial.stopbits   = STOPBITS
+        inst.serial.bytesize   = BYTESIZE
+        inst.serial.timeout    = TIMEOUT
+        inst.mode              = minimalmodbus.MODE_RTU
+        instruments[sid] = inst
+        log.info(f"Instrument voor slave {sid} klaar op {PORT}")
 
-@app.route('/')
-def index():
-    return render_template_string(PAGE)
-
-def sensor_loop():
-    """Simuleer iedere seconde wat dummy-sensorwaarden."""
-    while True:
-        dummy = [{
-            'name':     f'DemoSensor{sid}',
-            'slave_id': sid,
-            'channel':  ch,
-            'raw':      random.randint(0, 4095),
-            'value':    round(random.random() * 10, 2)
-        } for sid in (5,6,7,8) for ch in range(2)]
-        socketio.emit('sensor_update', dummy)
-        time.sleep(1)
+    try:
+        while True:
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+            print(f"\n[{timestamp}] Lees sensoren:")
+            for sid, inst in instruments.items():
+                for ch in range(CHANNELS_PER_UNIT):
+                    try:
+                        # lees input-register (function code 4)
+                        raw = inst.read_register(
+                            registeraddress=ch,
+                            number_of_decimals=0,
+                            functioncode=4
+                        )
+                        # eenvoudige kalibratie (pas aan naar behoefte)
+                        scale  = 1.0
+                        offset = 0.0
+                        value  = raw * scale + offset
+                        print(f"  Slave {sid} Ch{ch}: raw={raw:5d}  value={value:.2f}")
+                    except Exception as e:
+                        log.warning(f"Fout bij slave {sid} ch{ch}: {e}")
+            time.sleep(1)
+    except KeyboardInterrupt:
+        log.info("Stoppen op gebruikersverzoek.")
 
 if __name__ == '__main__':
-    # Start de dummy sensor-thread
-    threading.Thread(target=sensor_loop, daemon=True).start()
-    # Run op poort 5002 om niet te conflicteren met je hoofd-app
-    socketio.run(app, host='0.0.0.0', port=5002, debug=True)
+    main()
