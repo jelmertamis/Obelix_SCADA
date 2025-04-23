@@ -197,7 +197,9 @@ def sensor_monitor():
                                 'value':    round(val,2)
                             })
                         except: pass
-            print(f"[DBG sensor_monitor] payload ({len(data)} items): {data}")
+            slave5 = [d for d in data if d['slave_id'] == 5]
+            if slave5:
+                print(f"[DBG sensor_monitor] Slave 5 readings ({len(slave5)} items): {slave5}")
             socketio.emit('sensor_update', data, namespace='/sensors')
         eventlet.sleep(1)
 
