@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Sensor Test (Static)</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    pre { background: #f4f4f4; padding: .5rem; }
+  </style>
+</head>
+<body>
+  <h1>Live Sensor Data (slave 5)</h1>
+  <pre id="output">Wachten op data…</pre>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  <script>
+    const out = document.getElementById('output');
+    // Verbind met je Socket.IO-server op poort 5002
+    const socket = io('http://localhost:5002');
+
+    socket.on('connect', () => {
+      console.log('✅ Verbonden met WS');
+      out.textContent = 'Verbonden – wachten op sensor_update…';
+    });
+
+    socket.on('sensor_update', data => {
+      console.log('🔔 sensor_update:', data);
+      out.textContent =
+        `Ch${data.channel}: raw=${data.raw}  value=${data.value.toFixed(2)}`;
+    });
+
+    socket.on('disconnect', () => {
+      console.warn('❌ Verbinding verbroken');
+      out.textContent = 'Verbinding verbroken';
+    });
+  </script>
+</body>
+</html>
