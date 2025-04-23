@@ -71,7 +71,7 @@ HTML = """
   <title>Sensor WebSocket Test</title>
 </head>
 <body>
-  <h1>Live sensorwaarde (slave 5)</h1>
+  <h1>Live sensorwaarden (slave 5)</h1>
   <pre id="output">Wachten…</pre>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
@@ -97,27 +97,27 @@ def index():
     return render_template_string(HTML)
 
 def sensor_loop(inst):
-    """Lees elke 2s slave 5 uit en emit via WS."""
+    """Lees elke 2s slave 5 uit, log het en emit via WS."""
     while True:
-        try:
-            for ch in range(CHANNELS):
+        for ch in range(CHANNELS):
+            try:
                 raw = inst.read_register(ch, functioncode=4)
                 cal = get_calibration(0, ch)
                 val = raw * cal['scale'] + cal['offset']
-                # zend per kanaal een event
+                # Print naar server-console
+                print(f"[{time.strftime('%H:%M:%S')}] Slave {SLAVE_ID} Ch{ch}: raw={raw}  value={val:.2f}")
+                # Zend via WebSocket
                 socketio.emit('sensor_update', {
                   'channel': ch,
                   'raw':      raw,
                   'value':    val
                 })
-                time.sleep(0.1)  # kleine pauze tussen kanalen
-        except Exception as e:
-            log.warning(f"Fout in uitlees-loop: {e}")
-        time.sleep(2)  # wacht 2s voor de volgende ronde
+            except Exception as e:
+                log.warning(f"Fout bij uitlezen slave {SLAVE_ID} Ch{ch}: {e}")
+            time.sleep(0.1)
+        time.sleep(2)
 
 if __name__ == '__main__':
     client = init_client()
-    # start de achtergrond-thread
     threading.Thread(target=sensor_loop, args=(client,), daemon=True).start()
-    # run op poort 5002
     socketio.run(app, host='0.0.0.0', port=5002)
