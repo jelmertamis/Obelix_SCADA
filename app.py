@@ -178,9 +178,9 @@ def sensor_monitor():
                     except:
                         pass
         # debug only slave 5
-        slave5 = [d for d in data if d['slave_id']==5]
-        if slave5:
-            print(f"[DBG sensor_monitor] Slave 5: {slave5}")
+        # slave5 = [d for d in data if d['slave_id']==5]
+        # if slave5:
+        #     print(f"[DBG sensor_monitor] Slave 5: {slave5}")
         socketio.emit('sensor_update', data, namespace='/sensors')
         time.sleep(1)
 
