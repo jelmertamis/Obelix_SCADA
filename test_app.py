@@ -1,62 +1,87 @@
-# read_sensors.py
+# test_app.py
 import time
 import minimalmodbus
 import serial
 import logging
+import sqlite3
 
-# Logging aanzetten (optioneel)
+# ─── Logging ───────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# Seriële poort-configuratie
-PORT      = '/dev/ttyUSB0'           # of 'COM3' op Windows
-BAUDRATE  = 19200
-PARITY    = serial.PARITY_NONE
-STOPBITS  = 1
-BYTESIZE  = 8
-TIMEOUT   = 1                        # seconde
+# ─── Database (voor kalibratie) ────────────────────────────────────────────
+DB_FILE = 'settings.db'
 
-# Welke slave IDs en kanalen
-SLAVE_UNITS         = [5, 6, 7, 8]   # jouw EX04AIS units
-CHANNELS_PER_UNIT   = 4              # 4 ingangen per module
+def get_calibration(unit_index, channel):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+      SELECT scale, offset
+      FROM calibration
+      WHERE unit_index=? AND channel=?
+    ''', (unit_index, channel))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return {'scale': row[0], 'offset': row[1]}
+    return {'scale': 1.0, 'offset': 0.0}
 
-def main():
-    # Maak per slave een instrument
-    instruments = {}
-    for sid in SLAVE_UNITS:
-        inst = minimalmodbus.Instrument(PORT, sid)
+# ─── Modbus-configuratie ───────────────────────────────────────────────────
+RS485_PORT = '/dev/ttyUSB0'       # Pas aan: bijv. 'COM3' op Windows of het juiste /dev/…
+BAUDRATE   = 9600
+PARITY     = serial.PARITY_EVEN
+STOPBITS   = 1
+BYTESIZE   = 8
+TIMEOUT    = 1                     # in seconden
+
+# ─── Sensor-units ──────────────────────────────────────────────────────────
+ANALOG_UNITS = [
+    {'slave_id': 5, 'name': 'Analog Input 1'},
+    {'slave_id': 6, 'name': 'Analog Input 2'},
+    {'slave_id': 7, 'name': 'Analog Input 3'},
+    {'slave_id': 8, 'name': 'Analog Input 4'},
+]
+CHANNELS_PER_UNIT = 4              # 4 analoge ingangen per module
+
+def init_modbus_clients():
+    clients = []
+    for idx, u in enumerate(ANALOG_UNITS):
+        inst = minimalmodbus.Instrument(RS485_PORT, u['slave_id'], mode=minimalmodbus.MODE_RTU)
         inst.serial.baudrate   = BAUDRATE
         inst.serial.parity     = PARITY
         inst.serial.stopbits   = STOPBITS
         inst.serial.bytesize   = BYTESIZE
         inst.serial.timeout    = TIMEOUT
-        inst.mode              = minimalmodbus.MODE_RTU
-        instruments[sid] = inst
-        log.info(f"Instrument voor slave {sid} klaar op {PORT}")
+        inst.clear_buffers_before_each_transaction = True
+        inst.debug = False  # op True voor RTU-traces
 
-    try:
-        while True:
-            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-            print(f"\n[{timestamp}] Lees sensoren:")
-            for sid, inst in instruments.items():
-                for ch in range(CHANNELS_PER_UNIT):
-                    try:
-                        # lees input-register (function code 4)
-                        raw = inst.read_register(
-                            registeraddress=ch,
-                            number_of_decimals=0,
-                            functioncode=4
-                        )
-                        # eenvoudige kalibratie (pas aan naar behoefte)
-                        scale  = 1.0
-                        offset = 0.0
-                        value  = raw * scale + offset
-                        print(f"  Slave {sid} Ch{ch}: raw={raw:5d}  value={value:.2f}")
-                    except Exception as e:
-                        log.warning(f"Fout bij slave {sid} ch{ch}: {e}")
-            time.sleep(1)
-    except KeyboardInterrupt:
-        log.info("Stoppen op gebruikersverzoek.")
+        try:
+            # test-read: input-register 0 (functioncode 4)
+            inst.read_register(0, functioncode=4)
+            log.info(f"✔ Modbus OK voor {u['name']} (ID {u['slave_id']})")
+        except Exception as e:
+            log.error(f"✖ Fout init {u['name']} (ID {u['slave_id']}): {e}")
+        clients.append(inst)
+    return clients
+
+def sensor_monitor(clients):
+    while True:
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        print(f"\n[{timestamp}] Uitlezing analoge sensoren:")
+        for idx, (u, inst) in enumerate(zip(ANALOG_UNITS, clients)):
+            for ch in range(CHANNELS_PER_UNIT):
+                try:
+                    raw = inst.read_register(registernumber=ch,
+                                             number_of_decimals=0,
+                                             functioncode=4)
+                    cal = get_calibration(idx, ch)
+                    val = raw * cal['scale'] + cal['offset']
+                    print(f"  {u['name']} (ID {u['slave_id']}) Ch{ch}: raw={raw:5d}  value={val:8.2f}")
+                except Exception as e:
+                    log.warning(f"  Fout bij {u['name']} Ch{ch}: {e}")
+        print('-' * 40)
+        time.sleep(1)
 
 if __name__ == '__main__':
-    main()
+    clients = init_modbus_clients()
+    sensor_monitor(clients)
