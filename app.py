@@ -224,21 +224,34 @@ def ws_toggle_relay(msg):
     idx   = msg['unit_idx']
     coil  = msg['coil_idx']
     want  = msg['state']  # "ON" of "OFF"
+
+    # 1) Log de binnenkomende request
+    log(f"🔄 Relay change requested: unit {idx}, coil {coil} → {want}")
+
     inst  = clients[idx]
     try:
+        # 2) Schakel de coil
         with modbus_lock:
             if want == 'ON':
                 inst.write_bit(coil, True, functioncode=5)
             else:
                 inst.write_bit(coil, False, functioncode=5)
+
+        # 3) Broadcast naar clients
         emit('relay_toggled', {
             'unit_idx': idx,
             'coil_idx': coil,
             'state':    want
         }, namespace='/relays', broadcast=True)
+
+        # 4) Log het succes
+        log(f"✅ Relay changed: unit {idx}, coil {coil} is now {want}")
+
     except Exception as e:
-        logging.error(f"⚠️ Modbus-fout relay {idx} coil {coil}: {e}")
+        # 5) Log de fout
+        log(f"⚠️ Modbus error toggling unit {idx}, coil {coil}: {e}")
         emit('relay_error', {'error': str(e)}, namespace='/relays')
+
 
 # ─── WebSocket: Sensors ─────────────────────────────────────────────────────
 @socketio.on('connect', namespace='/sensors')
