@@ -343,16 +343,21 @@ def index():
 
 @app.route('/relays')
 def relays():
+    # expliciete lijst van slave IDs die je als relays wilt tonen
+    wanted = {1, 2, 3, 4, 9}
+
     relay_units = []
-    for i,u in enumerate(UNITS):
-        if u['type']=='relay':
+    for i, u in enumerate(UNITS):
+        if u['slave_id'] in wanted:
+            states = read_relay_states(i)
             relay_units.append({
-                'idx':  i,
-                'id':   u['slave_id'],
-                'name': u['name'],
-                'coils': [s=='ON' for s in read_relay_states(i)]
+                'idx':   i,
+                'id':    u['slave_id'],
+                'name':  u['name'],
+                'coils': [s == 'ON' for s in states]
             })
     return render_template('relays.html', relays=relay_units)
+
 
 @app.route('/sensors')
 def sensors():
