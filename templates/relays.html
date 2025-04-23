@@ -15,7 +15,7 @@
             <button
               class="onoff-button {{ 'on' if coil else 'off' }}"
               data-coil-idx="{{ loop.index0 }}">
-              {{ loop.index0 }}
+              {{ coil ? 'ON' : 'OFF' }}
             </button>
           {% endfor %}
         </div>
@@ -23,37 +23,59 @@
     {% endfor %}
   </div>
 </section>
+{% endblock %}
 
+{% block scripts %}
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-  const socket = io("/relays");
+  document.addEventListener("DOMContentLoaded", () => {
+    const socket = io("/relays");
+    const container = document.getElementById("relaysContainer");
 
-  document.querySelectorAll(".onoff-button").forEach(button => {
-    button.addEventListener("click", () => {
-      const coilIdx = parseInt(button.dataset.coilIdx);
-      const unitEl = button.closest(".relay-module");
-      const unitIdx = parseInt(unitEl.dataset.unitIdx);
-
-      socket.emit("toggle_relay", {
-        unit_idx: unitIdx,
-        coil_idx: coilIdx
+    // 1) Listen for the initial states
+    socket.on("init_relays", relays => {
+      relays.forEach(r => {
+        const moduleEl = container.querySelector(
+          `.relay-module[data-unit-idx="${r.idx}"]`
+        );
+        if (!moduleEl) return;
+        r.states.forEach((s, coil) => {
+          const btn = moduleEl.querySelector(
+            `.onoff-button[data-coil-idx="${coil}"]`
+          );
+          btn.classList.toggle("on",  s === "ON");
+          btn.classList.toggle("off", s !== "ON");
+          btn.textContent = s;
+        });
       });
     });
-  });
 
-  socket.on("relay_toggled", msg => {
-    const unitEl = document.querySelector(`.relay-module[data-unit-idx='${msg.unit_idx}']`);
-    if (!unitEl) return;
+    // 2) Emit toggles
+    container.addEventListener("click", e => {
+      if (!e.target.matches(".onoff-button")) return;
+      const btn     = e.target;
+      const coilIdx = Number(btn.dataset.coilIdx);
+      const unitIdx = Number(btn.closest(".relay-module").dataset.unitIdx);
+      socket.emit("toggle_relay", { unit_idx: unitIdx, coil_idx: coilIdx });
+    });
 
-    const button = unitEl.querySelector(`.onoff-button[data-coil-idx='${msg.coil_idx}']`);
-    if (!button) return;
+    // 3) Update after server confirms
+    socket.on("relay_toggled", msg => {
+      const moduleEl = container.querySelector(
+        `.relay-module[data-unit-idx="${msg.unit_idx}"]`
+      );
+      if (!moduleEl) return;
+      const btn = moduleEl.querySelector(
+        `.onoff-button[data-coil-idx="${msg.coil_idx}"]`
+      );
+      btn.classList.toggle("on",  msg.state === "ON");
+      btn.classList.toggle("off", msg.state !== "ON");
+      btn.textContent = msg.state;
+    });
 
-    button.classList.remove("on", "off");
-    button.classList.add(msg.state.toLowerCase());
-  });
-
-  socket.on("relay_error", msg => {
-    alert("Fout bij schakelen: " + msg.error);
+    socket.on("relay_error", err => {
+      alert("Fout bij schakelen: " + err.error);
+    });
   });
 </script>
 {% endblock %}

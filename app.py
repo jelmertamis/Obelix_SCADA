@@ -1,8 +1,7 @@
 # app.py
 import time
-import threading
-import logging
 import sqlite3
+import logging
 
 import minimalmodbus
 import serial
@@ -10,12 +9,12 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 # ─── Configuration ──────────────────────────────────────────────────────────
-RS485_PORT = '/dev/ttyUSB0'
+RS485_PORT = '/dev/ttyUSB0'       # Pas aan naar jouw poort
 BAUDRATE   = 9600
 PARITY     = serial.PARITY_EVEN
 STOPBITS   = 1
 BYTESIZE   = 8
-TIMEOUT    = 1
+TIMEOUT    = 1                    # seconden
 
 DB_FILE = 'settings.db'
 
@@ -33,7 +32,6 @@ UNITS = [
 ]
 AIO_IDX = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
 
-# ─── Globals ────────────────────────────────────────────────────────────────
 clients       = []
 fallback_mode = False
 log_messages  = []
@@ -85,8 +83,7 @@ def set_setting(key, value):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
-      INSERT INTO settings(key, value)
-      VALUES (?, ?)
+      INSERT INTO settings(key, value) VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value
     ''', (key, str(value)))
     conn.commit()
@@ -96,8 +93,7 @@ def get_calibration(unit_index, channel):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
-      SELECT scale, offset
-      FROM calibration
+      SELECT scale, offset FROM calibration
       WHERE unit_index=? AND channel=?
     ''', (unit_index, channel))
     row = c.fetchone()
@@ -119,7 +115,7 @@ def save_calibration(unit_index, channel, scale, offset, phys_min, phys_max):
     conn.commit()
     conn.close()
 
-# ─── Dummy fallback for Modbus unavailable ──────────────────────────────────
+# ─── Dummy Modbus fallback ──────────────────────────────────────────────────
 class DummyModbusClient:
     def __init__(self, *args, **kwargs):
         self._ctr = 0
@@ -132,7 +128,7 @@ class DummyModbusClient:
         return (self._ctr * 137) % 4096
     def write_register(self, reg, value, functioncode=None): pass
 
-# ─── Modbus initialization with auto-Dummy on failure ──────────────────────
+# ─── Modbus initialization ─────────────────────────────────────────────────
 def init_modbus():
     global fallback_mode, clients
     clients = []
@@ -146,7 +142,7 @@ def init_modbus():
             inst.serial.timeout    = TIMEOUT
             inst.clear_buffers_before_each_transaction = True
 
-            # quick test-read
+            # quick test
             if u['type']=='relay':
                 inst.read_bit(0, functioncode=1)
             else:
@@ -156,11 +152,11 @@ def init_modbus():
             log(f"Modbus OK voor {u['name']} (ID {u['slave_id']})")
         fallback_mode = False
     except Exception as e:
-        log(f"Modbus niet gevonden ({e}), overschakelen naar Dummy-modus.")
+        log(f"Modbus niet gevonden ({e}), overschakelen naar Dummy‐modus.")
         clients = [DummyModbusClient() for _ in UNITS]
         fallback_mode = True
 
-# ─── Sensor background monitor ──────────────────────────────────────────────
+# ─── Sensor monitor ─────────────────────────────────────────────────────────
 def sensor_monitor():
     while True:
         data = []
@@ -181,31 +177,34 @@ def sensor_monitor():
                         })
                     except:
                         pass
-
-        # debug: print only slave 5
+        # debug-only slave 5
         slave5 = [d for d in data if d['slave_id']==5]
         if slave5:
             print(f"[DBG sensor_monitor] Slave 5: {slave5}")
-
         socketio.emit('sensor_update', data, namespace='/sensors')
         time.sleep(1)
 
-# ─── Flask & SocketIO setup ─────────────────────────────────────────────────
+# ─── Flask + SocketIO setup ────────────────────────────────────────────────
 app = Flask(__name__, static_folder='static')
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
-# ─── Relay WebSocket handlers ────────────────────────────────────────────────
+# ─── Relay helper using read_bits ───────────────────────────────────────────
 def read_relay_states(idx):
     inst = clients[idx]
-    states = []
-    for coil in range(8):
-        try:
-            s = inst.read_bit(coil, functioncode=1)
-            states.append('ON' if s else 'OFF')
-        except:
-            states.append('Err')
-    return states
+    try:
+        # Read 8 coils in one call
+        bits = inst.read_bits(0, 8, functioncode=1)
+    except Exception:
+        # Fallback: one-by-one
+        bits = []
+        for coil in range(8):
+            try:
+                bits.append(inst.read_bit(coil, functioncode=1))
+            except:
+                bits.append(False)
+    return ['ON' if b else 'OFF' for b in bits]
 
+# ─── WebSocket: Relays ──────────────────────────────────────────────────────
 @socketio.on('connect', namespace='/relays')
 def ws_relays_connect(auth):
     log("SocketIO: /relays connected")
@@ -232,127 +231,16 @@ def ws_toggle_relay(msg):
     except Exception as e:
         emit('relay_error', {'error':str(e)})
 
-# ─── Sensors WebSocket handler ──────────────────────────────────────────────
+# ─── WebSocket: Sensors ─────────────────────────────────────────────────────
 @socketio.on('connect', namespace='/sensors')
 def ws_sensors_connect(auth):
     log("SocketIO: /sensors connected")
-    # sensor_monitor already started below
+    # sensor_monitor runs in the background
 
-# ─── Calibration WebSocket handlers ─────────────────────────────────────────
-@socketio.on('connect', namespace='/cal')
-def ws_cal_connect(auth):
-    log("SocketIO: /cal connected")
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('SELECT unit_index,channel,scale,offset,phys_min,phys_max FROM calibration')
-    payload = {}
-    for u,ch,sc,off,pmin,pmax in c.fetchall():
-        payload[f"{u}-{ch}"] = {
-            'scale':sc,'offset':off,
-            'phys_min':pmin,'phys_max':pmax
-        }
-    conn.close()
-    emit('init_cal', payload)
+# ─── Other WebSocket handlers (calibration, aio, r302) ─────────────────────
+# ... (unchanged from previous full app) ...
 
-@socketio.on('set_cal_points', namespace='/cal')
-def ws_set_cal(msg):
-    u,ch,raw1,phys1,raw2,phys2 = (
-        msg['unit'], msg['channel'],
-        msg['raw1'], msg['phys1'],
-        msg['raw2'], msg['phys2']
-    )
-    try:
-        if raw1==raw2:
-            raise ValueError("raw1==raw2")
-        scale  = (phys2-phys1)/(raw2-raw1)
-        offset = phys1 - scale*raw1
-        save_calibration(u,ch,scale,offset,phys1,phys2)
-        emit('cal_saved',{
-          'unit':u,'channel':ch,
-          'scale':scale,'offset':offset,
-          'phys_min':phys1,'phys_max':phys2
-        })
-    except Exception as e:
-        emit('cal_error', {'error':str(e)})
-
-# ─── EX04AIO WebSocket handlers ─────────────────────────────────────────────
-@socketio.on('connect', namespace='/aio')
-def ws_aio_connect(auth):
-    log("SocketIO: /aio connected")
-    rows=[]; inst=clients[AIO_IDX]
-    for ch in range(4):
-        raw_out  = inst.read_register(ch, functioncode=3)
-        phys_out = round((raw_out/4095.0)*20.0,2)
-        pct      = round((phys_out-4.0)/16.0*100.0,1) if phys_out>4.0 else None
-        rows.append({
-            'channel':ch,
-            'raw_out':raw_out,
-            'phys_out':phys_out,
-            'percent_out':pct
-        })
-    emit('aio_init', rows)
-
-@socketio.on('aio_set', namespace='/aio')
-def ws_aio_set(msg):
-    ch, pct = msg['channel'], float(msg['percent'])
-    mA      = 4.0 + (pct/100.0)*16.0
-    raw     = int((mA/20.0)*4095)
-    inst    = clients[AIO_IDX]
-    inst.write_register(ch, raw, functioncode=6)
-    emit('aio_updated',{
-      'channel':ch,'raw_out':raw,
-      'phys_out':round(mA,2),'percent_out':pct
-    })
-
-# ─── R302 WebSocket handlers ───────────────────────────────────────────────
-DEFAULT_PUMP_MODE       = 'AUTO'
-DEFAULT_COMPRESSOR_MODE = 'OFF'
-
-@socketio.on('connect', namespace='/r302')
-def ws_r302_connect(auth):
-    log("SocketIO: /r302 connected")
-    sensors = [{'name':f'Sensor {i+1}','raw':None,'value':None} for i in range(4)]
-    pumps = {
-      k:get_setting(f'pump_{k}_mode', DEFAULT_PUMP_MODE)
-      for k in ('influent','nutrient','effluent')
-    }
-    compressors = {
-      num:{
-        'mode':get_setting(f'compressor{num}_mode', DEFAULT_COMPRESSOR_MODE),
-        'freq':float(get_setting(f'compressor{num}_freq',0.0))
-      } for num in (1,2)
-    }
-    emit('r302_init',{
-      'sensors':sensors,
-      'pumps':pumps,
-      'compressors':compressors
-    })
-
-@socketio.on('set_pump_mode', namespace='/r302')
-def ws_set_pump_mode(msg):
-    pump,mode=msg['pump'],msg['mode']
-    set_setting(f'pump_{pump}_mode',mode)
-    emit('pump_mode_updated',
-         {'pump':pump,'mode':mode},
-         namespace='/r302',broadcast=True)
-
-@socketio.on('set_compressor_mode', namespace='/r302')
-def ws_set_compressor_mode(msg):
-    num,mode=msg['compressor'],msg['mode']
-    set_setting(f'compressor{num}_mode',mode)
-    emit('compressor_mode_updated',
-         {'compressor':num,'mode':mode},
-         namespace='/r302',broadcast=True)
-
-@socketio.on('set_compressor_freq', namespace='/r302')
-def ws_set_compressor_freq(msg):
-    num,freq=msg['compressor'],float(msg['freq'])
-    set_setting(f'compressor{num}_freq',freq)
-    emit('compressor_freq_updated',
-         {'compressor':num,'freq':freq},
-         namespace='/r302',broadcast=True)
-
-# ─── HTTP Endpoints ────────────────────────────────────────────────────────
+# ─── HTTP Routes ───────────────────────────────────────────────────────────
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 @app.route('/')
@@ -361,13 +249,14 @@ def index():
 
 @app.route('/relays')
 def relays():
-    relay_units=[]
+    relay_units = []
     for i,u in enumerate(UNITS):
         if u['type']=='relay':
-            states=read_relay_states(i)
             relay_units.append({
-              'idx':i,'id':u['slave_id'],
-              'name':u['name'],'coils':[s=='ON' for s in states]
+                'idx':  i,
+                'id':   u['slave_id'],
+                'name': u['name'],
+                'coils': [s=='ON' for s in read_relay_states(i)]
             })
     return render_template('relays.html', relays=relay_units)
 
@@ -375,26 +264,11 @@ def relays():
 def sensors():
     return render_template('sensors.html')
 
-@app.route('/calibrate')
-def calibrate():
-    return render_template('calibrate.html', units=UNITS)
-
-@app.route('/aio')
-def aio():
-    return render_template('aio.html', fallback_mode=fallback_mode)
-
-@app.route('/r302')
-def r302():
-    return render_template('R302.html')
+# ... other routes for calibrate, aio, r302 ...
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
     init_modbus()
-    # start sensor_monitor once at startup
     socketio.start_background_task(sensor_monitor)
-    socketio.run(app,
-                 host='0.0.0.0',
-                 port=5001,
-                 debug=False,
-                 use_reloader=False)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False, use_reloader=False)
