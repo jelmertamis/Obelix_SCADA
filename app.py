@@ -11,35 +11,38 @@ import minimalmodbus
 # Configuration
 # ----------------------------
 RS485_PORT = '/dev/ttyUSB0'
-BAUDRATE = 9600
-DB_FILE = 'settings.db'
+BAUDRATE   = 9600
+DB_FILE    = 'settings.db'
 
 UNITS = [
-    {'slave_id': 1,  'name': 'Relay Module 1',  'type': 'relay'},
-    {'slave_id': 2,  'name': 'Relay Module 2',  'type': 'relay'},
-    {'slave_id': 3,  'name': 'Relay Module 3',  'type': 'relay'},
-    {'slave_id': 4,  'name': 'Relay Module 4',  'type': 'relay'},
-    {'slave_id': 5,  'name': 'Analog Input 1',  'type': 'analog'},
-    {'slave_id': 6,  'name': 'Analog Input 2',  'type': 'analog'},
-    {'slave_id': 7,  'name': 'Analog Input 3',  'type': 'analog'},
-    {'slave_id': 8,  'name': 'Analog Input 4',  'type': 'analog'},
-    {'slave_id': 9,  'name': 'EX1608DD',        'type': 'relay'},
-    {'slave_id': 10, 'name': 'EX04AIO',          'type': 'aio'},
+    {'slave_id': 1,  'name': 'Relay Module 1', 'type': 'relay'},
+    {'slave_id': 2,  'name': 'Relay Module 2', 'type': 'relay'},
+    {'slave_id': 3,  'name': 'Relay Module 3', 'type': 'relay'},
+    {'slave_id': 4,  'name': 'Relay Module 4', 'type': 'relay'},
+    {'slave_id': 5,  'name': 'Analog Input 1', 'type': 'analog'},
+    {'slave_id': 6,  'name': 'Analog Input 2', 'type': 'analog'},
+    {'slave_id': 7,  'name': 'Analog Input 3', 'type': 'analog'},
+    {'slave_id': 8,  'name': 'Analog Input 4', 'type': 'analog'},
+    {'slave_id': 9,  'name': 'EX1608DD',       'type': 'relay'},
+    {'slave_id': 10, 'name': 'EX04AIO',         'type': 'aio'},
 ]
+
+# find index of EX04AIO
+AIO_IDX = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
 
 # ----------------------------
 # Flask & SocketIO setup
 # ----------------------------
-app = Flask(__name__)
+app      = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')
 
 # ----------------------------
 # Globals
 # ----------------------------
-clients = []
+clients       = []
 fallback_mode = False
-log_messages = []
-MAX_LOG_MESSAGES = 20
+log_messages  = []
+MAX_LOG       = 20
 
 # ----------------------------
 # Database helpers
@@ -47,7 +50,6 @@ MAX_LOG_MESSAGES = 20
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # calibration table now includes phys_min and phys_max
     c.execute('''
       CREATE TABLE IF NOT EXISTS calibration (
         unit_index INTEGER NOT NULL,
@@ -59,7 +61,6 @@ def init_db():
         PRIMARY KEY(unit_index, channel)
       )
     ''')
-    # settings table for other persistence (e.g., AIO setpoints)
     c.execute('''
       CREATE TABLE IF NOT EXISTS settings (
         key   TEXT PRIMARY KEY,
@@ -86,17 +87,15 @@ def get_calibration(unit, channel):
             'phys_min': row[2],
             'phys_max': row[3]
         }
-    # defaults: identity mapping
-    return {'scale': 1.0, 'offset': 0.0, 'phys_min': 0.0, 'phys_max': 4095.0}
+    return {'scale':1.0, 'offset':0.0, 'phys_min':0.0, 'phys_max':4095.0}
 
 def save_calibration(unit, channel, scale, offset, phys_min, phys_max):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
-      INSERT INTO calibration(
-        unit_index, channel, scale, offset, phys_min, phys_max
-      ) VALUES (?,?,?,?,?,?)
-      ON CONFLICT(unit_index,channel) DO UPDATE SET
+      INSERT INTO calibration(unit_index, channel, scale, offset, phys_min, phys_max)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(unit_index, channel) DO UPDATE SET
         scale=excluded.scale,
         offset=excluded.offset,
         phys_min=excluded.phys_min,
@@ -131,8 +130,8 @@ def log(msg):
     ts = time.strftime('%H:%M:%S')
     entry = f'[{ts}] {msg}'
     log_messages.append(entry)
-    if len(log_messages) > MAX_LOG_MESSAGES:
-        del log_messages[:-MAX_LOG_MESSAGES]
+    if len(log_messages) > MAX_LOG:
+        del log_messages[:-MAX_LOG]
     print(entry)
 
 # ----------------------------
@@ -145,13 +144,13 @@ def init_modbus():
     for u in UNITS:
         try:
             inst = minimalmodbus.Instrument(RS485_PORT, u['slave_id'], mode='rtu')
-            inst.serial.baudrate  = BAUDRATE
-            inst.serial.parity    = minimalmodbus.serial.PARITY_EVEN
-            inst.serial.stopbits  = 1
-            inst.serial.bytesize  = 8
-            inst.serial.timeout   = 1
+            inst.serial.baudrate = BAUDRATE
+            inst.serial.parity   = minimalmodbus.serial.PARITY_EVEN
+            inst.serial.stopbits = 1
+            inst.serial.bytesize = 8
+            inst.serial.timeout  = 1
             # quick test read
-            if u['type']=='relay':
+            if u['type'] == 'relay':
                 inst.read_bit(0, functioncode=1)
             else:
                 inst.read_register(0, functioncode=4)
@@ -177,21 +176,21 @@ def read_relay_states(idx):
     return states
 
 # ----------------------------
-# Background sensor monitor
+# Sensor background monitor
 # ----------------------------
 def sensor_monitor():
     while True:
         if not fallback_mode:
-            readings = []
+            data = []
             for i,u in enumerate(UNITS):
-                if u['type']=='analog':
+                if u['type'] == 'analog':
                     inst = clients[i]
                     for ch in range(4):
                         try:
                             raw = inst.read_register(ch, functioncode=4)
                             cal = get_calibration(i, ch)
-                            val = raw*cal['scale'] + cal['offset']
-                            readings.append({
+                            val = raw * cal['scale'] + cal['offset']
+                            data.append({
                                 'name':     u['name'],
                                 'slave_id': u['slave_id'],
                                 'channel':  ch,
@@ -200,31 +199,31 @@ def sensor_monitor():
                             })
                         except:
                             pass
-            socketio.emit('sensor_update', readings, namespace='/sensors')
+            socketio.emit('sensor_update', data, namespace='/sensors')
         eventlet.sleep(1)
 
 # ----------------------------
-# SocketIO: Relay namespace
+# WebSocket: Relays namespace
 # ----------------------------
 @socketio.on('connect', namespace='/relays')
-def ws_relays_connect():
+def ws_relays_connect(auth):
     log("SocketIO: /relays connected")
-    data = []
+    out = []
     for i,u in enumerate(UNITS):
-        if u['type']=='relay':
-            data.append({
+        if u['type'] == 'relay':
+            out.append({
                 'idx':      i,
                 'name':     u['name'],
                 'slave_id': u['slave_id'],
                 'states':   read_relay_states(i)
             })
-    emit('init_relays', data)
+    emit('init_relays', out)
 
 @socketio.on('toggle_relay', namespace='/relays')
 def ws_toggle_relay(msg):
-    idx   = msg['unit_idx']
-    coil  = msg['coil_idx']
-    inst  = clients[idx]
+    idx  = msg['unit_idx']
+    coil = msg['coil_idx']
+    inst = clients[idx]
     try:
         cur = inst.read_bit(coil, functioncode=1)
         inst.write_bit(coil, not cur, functioncode=5)
@@ -234,42 +233,18 @@ def ws_toggle_relay(msg):
         emit('relay_error', {'error': str(e)})
 
 # ----------------------------
-# SocketIO: Sensors namespace
+# WebSocket: Sensors namespace
 # ----------------------------
 @socketio.on('connect', namespace='/sensors')
-def ws_sensors_connect():
+def ws_sensors_connect(auth):
     log("SocketIO: /sensors connected")
-    readings = []
-    for i,u in enumerate(UNITS):
-        if u['type']=='analog':
-            inst = clients[i]
-            for ch in range(4):
-                try:
-                    raw = inst.read_register(ch, functioncode=4)
-                    cal = get_calibration(i, ch)
-                    val = raw*cal['scale'] + cal['offset']
-                    readings.append({
-                        'name':     u['name'],
-                        'slave_id': u['slave_id'],
-                        'channel':  ch,
-                        'raw':      raw,
-                        'value':    round(val,2)
-                    })
-                except:
-                    readings.append({
-                        'name':     u['name'],
-                        'slave_id': u['slave_id'],
-                        'channel':  ch,
-                        'raw':      None,
-                        'value':    None
-                    })
-    emit('sensor_update', readings)
+    sensor_monitor()  # push initial snapshot
 
 # ----------------------------
-# SocketIO: Calibration namespace
+# WebSocket: Calibration namespace
 # ----------------------------
 @socketio.on('connect', namespace='/cal')
-def ws_cal_connect():
+def ws_cal_connect(auth):
     log("SocketIO: /cal connected")
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -277,39 +252,36 @@ def ws_cal_connect():
       SELECT unit_index, channel, scale, offset, phys_min, phys_max
       FROM calibration
     ''')
-    all_cal = {}
-    for unit, ch, sc, off, pmin, pmax in c.fetchall():
-        all_cal[f"{unit}-{ch}"] = {
+    payload = {}
+    for u,ch,sc,off,pmin,pmax in c.fetchall():
+        payload[f"{u}-{ch}"] = {
             'scale':    sc,
             'offset':   off,
             'phys_min': pmin,
             'phys_max': pmax
         }
     conn.close()
-    emit('init_cal', all_cal)
+    emit('init_cal', payload)
 
 @socketio.on('set_cal_points', namespace='/cal')
 def ws_set_cal(msg):
-    unit     = msg['unit']
-    channel  = msg['channel']
-    raw1     = msg['raw1']
-    phys1    = msg['phys1']
-    raw2     = msg['raw2']
-    phys2    = msg['phys2']
+    u      = msg['unit']
+    ch     = msg['channel']
+    raw1   = msg['raw1']; phys1 = msg['phys1']
+    raw2   = msg['raw2']; phys2 = msg['phys2']
     try:
         if raw1 == raw2:
             raise ValueError("raw1 en raw2 mogen niet gelijk zijn")
-        scale   = (phys2 - phys1) / (raw2 - raw1)
-        offset  = phys1 - scale * raw1
-        save_calibration(unit, channel, scale, offset, phys1, phys2)
-        log(f"Calibration saved unit{unit} ch{channel}: scale={scale:.4f}, offset={offset:.2f}, min={phys1}, max={phys2}")
+        scale  = (phys2 - phys1) / (raw2 - raw1)
+        offset = phys1 - scale * raw1
+        save_calibration(u, ch, scale, offset, phys1, phys2)
         emit('cal_saved', {
-            'unit':     unit,
-            'channel':  channel,
-            'scale':    scale,
-            'offset':   offset,
-            'phys_min': phys1,
-            'phys_max': phys2
+            'unit':      u,
+            'channel':   ch,
+            'scale':     scale,
+            'offset':    offset,
+            'phys_min':  phys1,
+            'phys_max':  phys2
         })
     except Exception as e:
         emit('cal_error', {'error': str(e)})
@@ -319,14 +291,13 @@ def ws_set_cal(msg):
 # ----------------------------
 @socketio.on('connect', namespace='/aio')
 def ws_aio_connect(auth):
-    # stuur initial state
-    idx = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
-    inst = clients[idx]
+    log("SocketIO: /aio connected")
     rows = []
+    inst = clients[AIO_IDX]
     for ch in range(4):
         raw_out  = inst.read_register(ch, functioncode=3)
-        phys_out = round((raw_out/4095.0)*20.0, 2)
-        pct      = round((phys_out-4.0)/16.0*100.0, 1) if phys_out > 4.0 else None
+        phys_out = round((raw_out / 4095.0) * 20.0, 2)
+        pct      = round((phys_out - 4.0) / 16.0 * 100.0, 1) if phys_out > 4.0 else None
         rows.append({
             'channel':     ch,
             'raw_out':     raw_out,
@@ -337,21 +308,71 @@ def ws_aio_connect(auth):
 
 @socketio.on('aio_set', namespace='/aio')
 def ws_aio_set(msg):
-    idx     = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
     ch      = msg['channel']
     percent = float(msg['percent'])
-    # % → mA → raw
-    mA  = 4.0 + (percent/100.0)*16.0
-    raw = int((mA/20.0)*4095)
-    clients[idx].write_register(ch, raw, functioncode=6)
-    # back to client
+    mA      = 4.0 + (percent / 100.0) * 16.0
+    raw     = int((mA / 20.0) * 4095)
+    inst    = clients[AIO_IDX]
+    inst.write_register(ch, raw, functioncode=6)
     emit('aio_updated', {
         'channel':     ch,
         'raw_out':     raw,
-        'phys_out':    round(mA,2),
+        'phys_out':    round(mA, 2),
         'percent_out': percent
     })
 
+# ----------------------------
+# WebSocket: R302 namespace
+# ----------------------------
+DEFAULT_PUMP_MODE       = 'AUTO'
+DEFAULT_COMPRESSOR_MODE = 'OFF'
+
+@socketio.on('connect', namespace='/r302')
+def ws_r302_connect(auth):
+    log("SocketIO: /r302 connected")
+    # sensors placeholders
+    sensors = [{'name': f'Sensor {i+1}', 'raw': None, 'value': None} for i in range(4)]
+    # pumps
+    pumps = {}
+    for key in ('influent','nutrient','effluent'):
+        pumps[key] = get_setting(f'pump_{key}_mode', DEFAULT_PUMP_MODE)
+    # compressors
+    compressors = {}
+    for num in (1,2):
+        compressors[num] = {
+            'mode': get_setting(f'compressor{num}_mode', DEFAULT_COMPRESSOR_MODE),
+            'freq': float(get_setting(f'compressor{num}_freq', 0.0))
+        }
+    emit('r302_init', {
+        'sensors':     sensors,
+        'pumps':       pumps,
+        'compressors': compressors
+    })
+
+@socketio.on('set_pump_mode', namespace='/r302')
+def ws_set_pump_mode(msg):
+    pump = msg['pump']
+    mode = msg['mode']
+    set_setting(f'pump_{pump}_mode', mode)
+    emit('pump_mode_updated', {'pump': pump, 'mode': mode}, namespace='/r302', broadcast=True)
+
+@socketio.on('set_compressor_mode', namespace='/r302')
+def ws_set_compressor_mode(msg):
+    num  = msg['compressor']
+    mode = msg['mode']
+    set_setting(f'compressor{num}_mode', mode)
+    emit('compressor_mode_updated',
+         {'compressor': num, 'mode': mode},
+         namespace='/r302', broadcast=True)
+
+@socketio.on('set_compressor_freq', namespace='/r302')
+def ws_set_compressor_freq(msg):
+    num  = msg['compressor']
+    freq = float(msg['freq'])
+    set_setting(f'compressor{num}_freq', freq)
+    emit('compressor_freq_updated',
+         {'compressor': num, 'freq': freq},
+         namespace='/r302', broadcast=True)
 
 # ----------------------------
 # HTTP Routes
@@ -362,20 +383,23 @@ def index():
 
 @app.route('/relays')
 def relays():
-    return render_template('relays.html')
+    return render_template('relays.html', fallback_mode=fallback_mode)
 
 @app.route('/sensors')
 def sensors():
-    return render_template('sensors.html')
+    return render_template('sensors.html', fallback_mode=fallback_mode)
 
 @app.route('/aio')
 def aio():
-    # Nu alleen nog de template serveren.
     return render_template('aio.html', fallback_mode=fallback_mode)
 
 @app.route('/calibrate')
 def calibrate():
     return render_template('calibrate.html', units=UNITS)
+
+@app.route('/r302')
+def r302():
+    return render_template('r302.html')
 
 # ----------------------------
 # Main
