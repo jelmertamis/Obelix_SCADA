@@ -71,9 +71,11 @@ def sensor_monitor(clients):
         for idx, (u, inst) in enumerate(zip(ANALOG_UNITS, clients)):
             for ch in range(CHANNELS_PER_UNIT):
                 try:
-                    raw = inst.read_register(registernumber=ch,
-                                             number_of_decimals=0,
-                                             functioncode=4)
+                    raw = inst.read_register(
+                        registeraddress=ch,
+                        number_of_decimals=0,
+                        functioncode=4
+                    )
                     cal = get_calibration(idx, ch)
                     val = raw * cal['scale'] + cal['offset']
                     print(f"  {u['name']} (ID {u['slave_id']}) Ch{ch}: raw={raw:5d}  value={val:8.2f}")
