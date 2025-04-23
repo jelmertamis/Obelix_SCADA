@@ -1,9 +1,13 @@
-# test_app.py
+# test_app_ws.py
 import time
-import minimalmodbus
-import serial
+import threading
 import logging
+import serial
 import sqlite3
+
+import minimalmodbus
+from flask import Flask, render_template_string
+from flask_socketio import SocketIO
 
 # ─── Logging ───────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -27,66 +31,93 @@ def get_calibration(unit_index, channel):
     return {'scale': 1.0, 'offset': 0.0}
 
 # ─── Modbus-configuratie ───────────────────────────────────────────────────
-RS485_PORT = '/dev/ttyUSB0'       # Pas aan: bijv. 'COM3' op Windows of het juiste /dev/…
+RS485_PORT = '/dev/ttyUSB0'    # Pas aan naar je poort
 BAUDRATE   = 9600
 PARITY     = serial.PARITY_EVEN
 STOPBITS   = 1
 BYTESIZE   = 8
-TIMEOUT    = 1                     # in seconden
+TIMEOUT    = 1                # seconden
 
-# ─── Sensor-units ──────────────────────────────────────────────────────────
-ANALOG_UNITS = [
-    {'slave_id': 5, 'name': 'Analog Input 1'},
-    {'slave_id': 6, 'name': 'Analog Input 2'},
-    {'slave_id': 7, 'name': 'Analog Input 3'},
-    {'slave_id': 8, 'name': 'Analog Input 4'},
-]
-CHANNELS_PER_UNIT = 4              # 4 analoge ingangen per module
+# ─── We lezen alleen slave ID 5 ────────────────────────────────────────────
+SLAVE_ID = 5
+CHANNELS = 4
 
-def init_modbus_clients():
-    clients = []
-    for idx, u in enumerate(ANALOG_UNITS):
-        inst = minimalmodbus.Instrument(RS485_PORT, u['slave_id'], mode=minimalmodbus.MODE_RTU)
-        inst.serial.baudrate   = BAUDRATE
-        inst.serial.parity     = PARITY
-        inst.serial.stopbits   = STOPBITS
-        inst.serial.bytesize   = BYTESIZE
-        inst.serial.timeout    = TIMEOUT
-        inst.clear_buffers_before_each_transaction = True
-        inst.debug = False  # op True voor RTU-traces
+def init_client():
+    inst = minimalmodbus.Instrument(RS485_PORT, SLAVE_ID, mode=minimalmodbus.MODE_RTU)
+    inst.serial.baudrate   = BAUDRATE
+    inst.serial.parity     = PARITY
+    inst.serial.stopbits   = STOPBITS
+    inst.serial.bytesize   = BYTESIZE
+    inst.serial.timeout    = TIMEOUT
+    inst.clear_buffers_before_each_transaction = True
+    inst.debug = False  # op True voor RTU-frames
+    # test-read
+    try:
+        inst.read_register(0, functioncode=4)
+        log.info(f"✔ Modbus OK voor slave {SLAVE_ID}")
+    except Exception as e:
+        log.error(f"✖ Kan slave {SLAVE_ID} niet bereiken: {e}")
+    return inst
 
-        try:
-            # test-read: input-register 0 (functioncode 4)
-            inst.read_register(0, functioncode=4)
-            log.info(f"✔ Modbus OK voor {u['name']} (ID {u['slave_id']})")
-        except Exception as e:
-            log.error(f"✖ Fout init {u['name']} (ID {u['slave_id']}): {e}")
-        clients.append(inst)
-    return clients
+# ─── Flask + SocketIO setup ────────────────────────────────────────────────
+app      = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins='*')
 
-def sensor_monitor(clients):
+HTML = """
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Sensor WebSocket Test</title>
+</head>
+<body>
+  <h1>Live sensorwaarde (slave 5)</h1>
+  <pre id="output">Wachten…</pre>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  <script>
+    const out = document.getElementById('output');
+    const socket = io();
+
+    socket.on('connect', () => {
+      console.log('✅ WebSocket verbonden');
+    });
+    socket.on('sensor_update', data => {
+      console.log('🔔 sensor_update:', data);
+      out.textContent = 
+        `Ch${data.channel}: raw=${data.raw}  value=${data.value.toFixed(2)}`;
+    });
+  </script>
+</body>
+</html>
+"""
+
+@app.route('/')
+def index():
+    return render_template_string(HTML)
+
+def sensor_loop(inst):
+    """Lees elke 2s slave 5 uit en emit via WS."""
     while True:
-        print("\n--- Uitlezing alleen ID 5 ---")
-        for idx, (u, inst) in enumerate(zip(ANALOG_UNITS, clients)):
-            # sla alle units over behalve ID 5
-            if u['slave_id'] != 5:
-                continue
-
-            for ch in range(CHANNELS_PER_UNIT):
-                try:
-                    raw = inst.read_register(
-                        registeraddress=ch,
-                        number_of_decimals=0,
-                        functioncode=4
-                    )
-                    cal = get_calibration(idx, ch)
-                    val = raw * cal['scale'] + cal['offset']
-                    print(f"  {u['name']} (ID {u['slave_id']}) Ch{ch}: raw={raw:5d}  value={val:8.2f}")
-                except Exception as e:
-                    log.warning(f"  Fout bij {u['name']} Ch{ch}: {e}")
-        time.sleep(2)
-
+        try:
+            for ch in range(CHANNELS):
+                raw = inst.read_register(ch, functioncode=4)
+                cal = get_calibration(0, ch)
+                val = raw * cal['scale'] + cal['offset']
+                # zend per kanaal een event
+                socketio.emit('sensor_update', {
+                  'channel': ch,
+                  'raw':      raw,
+                  'value':    val
+                })
+                time.sleep(0.1)  # kleine pauze tussen kanalen
+        except Exception as e:
+            log.warning(f"Fout in uitlees-loop: {e}")
+        time.sleep(2)  # wacht 2s voor de volgende ronde
 
 if __name__ == '__main__':
-    clients = init_modbus_clients()
-    sensor_monitor(clients)
+    client = init_client()
+    # start de achtergrond-thread
+    threading.Thread(target=sensor_loop, args=(client,), daemon=True).start()
+    # run op poort 5002
+    socketio.run(app, host='0.0.0.0', port=5002)
