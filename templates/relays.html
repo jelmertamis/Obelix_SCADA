@@ -1,91 +1,63 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Relay Controls</title>
-  <style>
-    body { font-family: sans-serif; padding: 1rem; text-align: center; }
-    h1 { margin-bottom: 1rem; }
-    table { border-collapse: collapse; margin: auto; width: 90%; }
-    th, td { border:1px solid #ccc; padding:8px; text-align: center; }
-    th { background: #f0f0f0; }
-    button {
-      padding: 0.5rem 1rem;
-      font-size: 0.9rem;
-      border-radius: 4px;
-      border: none;
-      color: white;
-      cursor: pointer;
-    }
-    .btn-on  { background-color: #28a745; }
-    .btn-off { background-color: #dc3545; }
-    .btn-on:hover  { background-color: #218838; }
-    .btn-off:hover { background-color: #c82333; }
-    .module-name { font-weight: bold; }
-  </style>
-</head>
-<body>
-  <h1>Relay Controls</h1>
-  <p><a href="{{ url_for('index') }}">← Terug naar Dashboard</a></p>
-  <table>
-    <thead>
-      <tr>
-        <th>Module (Slave ID)</th>
-        {% for ch in range(8) %}
-        <th>Coil {{ ch }}</th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody id="relayBody">
-      <!-- JS vult hier de rijen in -->
-    </tbody>
-  </table>
+{% extends 'base.html' %}
+
+{% block title %}Relay Control{% endblock %}
+
+{% block content %}
+  <h1>Relay Control</h1>
+
+  <div id="relaysContainer"></div>
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
     const socket = io('/relays');
+    const container = document.getElementById('relaysContainer');
 
-    socket.on('init_relays', relays => {
-      renderTable(relays);
-    });
+    // Bij connect: modules tekenen
+    socket.on('init_relays', modules => {
+      container.innerHTML = '';
+      modules.forEach(mod => {
+        // Module-wrapper
+        const wrap = document.createElement('div');
+        wrap.className = 'relay-module';
+        container.appendChild(wrap);
 
-    socket.on('relay_toggled', data => {
-      const btn = document.querySelector(
-        'button[data-unit="'+data.unit_idx+'"][data-coil="'+data.coil_idx+'"]'
-      );
-      if (!btn) return;
-      btn.textContent = data.state;
-      btn.className = data.state === 'ON' ? 'btn-on' : 'btn-off';
-    });
+        // Titel
+        const title = document.createElement('h2');
+        title.textContent = `${mod.name} (ID ${mod.slave_id})`;
+        wrap.appendChild(title);
 
-    function renderTable(relays) {
-      const tbody = document.getElementById('relayBody');
-      tbody.innerHTML = '';
-      relays.forEach(r => {
-        const tr = document.createElement('tr');
-        const tdMod = document.createElement('td');
-        tdMod.textContent = r.name + ' (' + r.slave_id + ')';
-        tdMod.className = 'module-name';
-        tr.appendChild(tdMod);
-        r.states.forEach((state, ch) => {
-          const td = document.createElement('td');
+        // Buttons-container
+        const btns = document.createElement('div');
+        btns.className = 'relay-buttons';
+        wrap.appendChild(btns);
+
+        // Per coil een on/off-knop
+        mod.states.forEach((state, coil) => {
           const btn = document.createElement('button');
-          btn.textContent = state;
-          btn.className = state === 'ON' ? 'btn-on' : 'btn-off';
-          btn.setAttribute('data-unit',  r.idx);
-          btn.setAttribute('data-coil',  ch);
-          btn.addEventListener('click', () => {
+          btn.className = `onoff-button ${state.toLowerCase()}`;
+          btn.id        = `relay-${mod.idx}-${coil}`;
+          btn.textContent = coil;
+          btn.onclick = () => {
             socket.emit('toggle_relay', {
-              unit_idx: r.idx,
-              coil_idx: ch
+              unit_idx: mod.idx,
+              coil_idx: coil
             });
-          });
-          td.appendChild(btn);
-          tr.appendChild(td);
+          };
+          btns.appendChild(btn);
         });
-        tbody.appendChild(tr);
       });
-    }
+    });
+
+    // Update na toggle
+    socket.on('relay_toggled', msg => {
+      const btn = document.getElementById(`relay-${msg.unit_idx}-${msg.coil_idx}`);
+      btn.classList.toggle('on',  msg.state === 'ON');
+      btn.classList.toggle('off', msg.state === 'OFF');
+    });
+
+    // Foutmeldingen
+    socket.on('relay_error', err => {
+      alert('Relay error: ' + err.error);
+    });
   </script>
-</body>
-</html>
+{% endblock %}

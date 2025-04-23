@@ -1,60 +1,10 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>R302 Reactor Control</title>
-  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <style>
-    body { font-family: sans-serif; padding: 1rem; background: #f8f9fa; }
-    h1 { text-align: center; margin-bottom: 1rem; }
-    section { margin: 2rem auto; width: 90%; max-width: 800px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
-    th { background: #e9ecef; }
-    .control-group { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; }
-    .card {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      flex: 1 1 200px;
-      max-width: 240px;
-      padding: 1rem;
-      text-align: left;
-    }
-    .card h3 { margin-top: 0; }
-    label { display: block; margin: 0.5rem 0 0.2rem; font-weight: 500; }
-    select, input[type=number] {
-      width: 100%; padding: 0.4rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px;
-    }
-    button {
-      margin-top: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: #007bff;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    button:hover { background: #0056b3; }
-    .primary-btn {
-      display: inline-block;
-      margin-bottom: 1rem;
-      padding: 0.6rem 1.2rem;
-      background: #28a745;
-      color: #fff;
-      text-decoration: none;
-      border-radius: 4px;
-      font-weight: 600;
-    }
-  </style>
-</head>
-<body>
-  <h1>R302 Reactor Control</h1>
-  <p style="text-align:center;">
-    <a href="{{ url_for('index') }}" class="primary-btn">← Terug naar Dashboard</a>
-  </p>
+<!-- templates/R302.html -->
+{% extends 'base.html' %}
+
+{% block title %}R302 Reactorbesturing{% endblock %}
+
+{% block content %}
+  <h1>R302 Reactorbesturing</h1>
 
   <!-- Sensors -->
   <section>
@@ -62,14 +12,10 @@
     <table>
       <thead>
         <tr>
-          <th>#</th>
-          <th>Raw</th>
-          <th>Value</th>
+          <th>#</th><th>Raw</th><th>Value</th>
         </tr>
       </thead>
-      <tbody id="sensorBody">
-        <!-- filled by JS -->
-      </tbody>
+      <tbody id="sensorBody"></tbody>
     </table>
   </section>
 
@@ -128,58 +74,49 @@
     </div>
   </section>
 
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
     const socket = io('/r302');
 
-    // Initialize UI on connect
     socket.on('r302_init', data => {
-      // Sensors
+      // sensors
       const sb = document.getElementById('sensorBody');
       sb.innerHTML = '';
-      data.sensors.forEach((s, i) => {
+      data.sensors.forEach((s,i) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${i+1}</td>
-          <td>${s.raw   ?? '—'}</td>
-          <td>${s.value ?? '—'}</td>
-        `;
+        tr.innerHTML = `<td>${i+1}</td><td>${s.raw||'—'}</td><td>${s.value||'—'}</td>`;
         sb.appendChild(tr);
       });
-
-      // Pumps
-      ['influent','nutrient','effluent'].forEach(key => {
-        document.getElementById(`mode-${key}`).value = data.pumps[key];
+      // pumps
+      ['influent','nutrient','effluent'].forEach(k=>{
+        document.getElementById(`mode-${k}`).value = data.pumps[k];
       });
-
-      // Compressors
-      [1,2].forEach(num => {
-        const c = data.compressors[num];
-        document.getElementById(`comp${num}-mode`).value = c.mode;
-        document.getElementById(`comp${num}-freq`).value = c.freq;
+      // compressors
+      [1,2].forEach(n=>{
+        const c = data.compressors[n];
+        document.getElementById(`comp${n}-mode`).value = c.mode;
+        document.getElementById(`comp${n}-freq`).value = c.freq;
       });
     });
 
-    // Listeners for updates
-    socket.on('pump_mode_updated', msg => {
-      document.getElementById(`mode-${msg.pump}`).value = msg.mode;
+    socket.on('pump_mode_updated', m=> {
+      document.getElementById(`mode-${m.pump}`).value = m.mode;
     });
-    socket.on('compressor_mode_updated', msg => {
-      document.getElementById(`comp${msg.compressor}-mode`).value = msg.mode;
+    socket.on('compressor_mode_updated', m=>{
+      document.getElementById(`comp${m.compressor}-mode`).value = m.mode;
     });
-    socket.on('compressor_freq_updated', msg => {
-      document.getElementById(`comp${msg.compressor}-freq`).value = msg.freq;
+    socket.on('compressor_freq_updated', m=>{
+      document.getElementById(`comp${m.compressor}-freq`).value = m.freq;
     });
 
-    // Action functions
-    function setPumpMode(pump, mode) {
-      socket.emit('set_pump_mode', { pump, mode });
+    function setPumpMode(pump,mode){
+      socket.emit('set_pump_mode',{pump,mode});
     }
-    function setCompMode(num, mode) {
-      socket.emit('set_compressor_mode', { compressor: num, mode });
+    function setCompMode(n,mode){
+      socket.emit('set_compressor_mode',{compressor:n,mode});
     }
-    function setCompFreq(num, freq) {
-      socket.emit('set_compressor_freq', { compressor: num, freq });
+    function setCompFreq(n,freq){
+      socket.emit('set_compressor_freq',{compressor:n,freq});
     }
   </script>
-</body>
-</html>
+{% endblock %}
