@@ -6,6 +6,7 @@
   <title>{% block title %}Obelix SCADA{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 
+  {# Extra head-content zoals styles of meta #}
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -22,5 +23,9 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+
+  {# Scripts voor alle pagina's, plus child-template overrides #}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
