@@ -197,7 +197,7 @@ def sensor_monitor():
                                 'value':    round(val,2)
                             })
                         except: pass
-            
+            print(f"[DBG sensor_monitor] payload ({len(data)} items): {data}")
             socketio.emit('sensor_update', data, namespace='/sensors')
         eventlet.sleep(1)
 
