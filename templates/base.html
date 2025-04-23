@@ -6,14 +6,14 @@
   <title>{% block title %}Obelix SCADA{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 
-  {# Extra head-content zoals styles of meta #}
+  {# Extra head-content zoals page-specifieke styles of meta #}
   {% block head %}{% endblock %}
 </head>
 <body>
-  {# Bepaal of we op de dashboard-pagina (index) zitten #}
+  {# Variabele om te bepalen of we op de dashboard/index zitten #}
   {% set is_index = (request.endpoint == 'index') %}
 
-  {# Toon de terug-knop alleen als we níet op de index zitten #}
+  {# Toon de terug-knop alleen als we niet op de index zitten #}
   {% if not is_index %}
     <p>
       <a class="btn" href="{{ url_for('index') }}">← Terug naar dashboard</a>
@@ -24,8 +24,7 @@
     {% block content %}{% endblock %}
   </main>
 
-  {# Scripts voor alle pagina's, plus child-template overrides #}
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  {# Globale scripts: blok voor pagina-specifieke JS #}
   {% block scripts %}{% endblock %}
 </body>
 </html>
