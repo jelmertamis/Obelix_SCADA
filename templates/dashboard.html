@@ -1,9 +1,10 @@
-<!-- templates/dashboard.html -->
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}Obelix SCADA Dashboard{% endblock %}
 
 {% block content %}
+<p style="color:red; font-weight:bold">🐵 Jinja geladen!</p>
+
   <h1>Obelix SCADA Dashboard</h1>
   <div class="control-group">
     <a href="{{ url_for('relays') }}"    class="primary-btn">Relays</a>

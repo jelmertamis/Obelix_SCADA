@@ -361,13 +361,26 @@ def ws_set_compressor_freq(msg):
 # ----------------------------
 # HTTP Routes
 # ----------------------------
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 @app.route('/')
 def index():
     return render_template('dashboard.html', fallback_mode=fallback_mode)
 
 @app.route('/relays')
 def relays():
-    return render_template('relays.html')
+    relay_units = []
+    for i, u in enumerate(UNITS):
+        if u['type'] == 'relay':
+            states = read_relay_states(i)
+            relay_units.append({
+                'idx': i,
+                'id': u['slave_id'],
+                'name': u['name'],
+                'coils': [s == 'ON' for s in states]
+            })
+    return render_template('relays.html', relays=relay_units)
+
+
 
 @app.route('/sensors')
 def sensors():
@@ -392,4 +405,4 @@ if __name__ == '__main__':
     init_db()
     init_modbus()
     socketio.start_background_task(sensor_monitor)
-    socketio.run(app, host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=True)

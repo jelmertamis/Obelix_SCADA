@@ -5,20 +5,23 @@
 {% block content %}
   <h1>Sensor Uitlezingen</h1>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Naam</th>
-        <th>Slave ID</th>
-        <th>Kanaal</th>
-        <th>Ruwe Waarde</th>
-        <th>Gekalibreerd</th>
-      </tr>
-    </thead>
-    <tbody id="sensorBody">
-      <!-- Wordt gevuld via WebSocket -->
-    </tbody>
-  </table>
+  <section class="sensor-container">
+    <table class="sensor-table">
+      <thead>
+        <tr>
+          <th>Naam</th>
+          <th>Slave ID</th>
+          <th>Kanaal</th>
+          <th>Ruwe Waarde</th>
+          <th>Gekalibreerd</th>
+        </tr>
+      </thead>
+      <tbody id="sensorBody">
+        <!-- Wordt gevuld via WebSocket -->
+      </tbody>
+    </table>
+    <p id="no-data" class="no-data" hidden>Geen sensoren gevonden.</p>
+  </section>
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
@@ -26,16 +29,23 @@
 
     socket.on('sensor_update', readings => {
       const tbody = document.getElementById('sensorBody');
+      const noData = document.getElementById('no-data');
       tbody.innerHTML = '';
-      readings.forEach(r => {
-        const tr = document.createElement('tr');
-        ['name','slave_id','channel','raw','value'].forEach(key => {
-          const td = document.createElement('td');
-          td.textContent = r[key] != null ? r[key] : '—';
-          tr.appendChild(td);
+
+      if (readings.length === 0) {
+        noData.hidden = false;
+      } else {
+        noData.hidden = true;
+        readings.forEach(r => {
+          const tr = document.createElement('tr');
+          ['name','slave_id','channel','raw','value'].forEach(key => {
+            const td = document.createElement('td');
+            td.textContent = r[key] != null ? r[key] : '—';
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
         });
-        tbody.appendChild(tr);
-      });
+      }
     });
   </script>
 {% endblock %}

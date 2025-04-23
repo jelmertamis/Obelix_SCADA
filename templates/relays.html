@@ -1,63 +1,59 @@
-{% extends 'base.html' %}
-
+{% extends "base.html" %}
 {% block title %}Relay Control{% endblock %}
 
 {% block content %}
+<section class="container">
   <h1>Relay Control</h1>
+  <div id="relaysContainer">
+    {% for r in relays %}
+      <div class="relay-module" data-unit-idx="{{ r.idx }}">
+        <div class="relay-header">
+          <h2>{{ r.name }}<br><small>(ID {{ r.id }})</small></h2>
+        </div>
+        <div class="relay-buttons">
+          {% for coil in r.coils %}
+            <button
+              class="onoff-button {{ 'on' if coil else 'off' }}"
+              data-coil-idx="{{ loop.index0 }}">
+              {{ loop.index0 }}
+            </button>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
 
-  <div id="relaysContainer"></div>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+  const socket = io("/relays");
 
-  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    const socket = io('/relays');
-    const container = document.getElementById('relaysContainer');
+  document.querySelectorAll(".onoff-button").forEach(button => {
+    button.addEventListener("click", () => {
+      const coilIdx = parseInt(button.dataset.coilIdx);
+      const unitEl = button.closest(".relay-module");
+      const unitIdx = parseInt(unitEl.dataset.unitIdx);
 
-    // Bij connect: modules tekenen
-    socket.on('init_relays', modules => {
-      container.innerHTML = '';
-      modules.forEach(mod => {
-        // Module-wrapper
-        const wrap = document.createElement('div');
-        wrap.className = 'relay-module';
-        container.appendChild(wrap);
-
-        // Titel
-        const title = document.createElement('h2');
-        title.textContent = `${mod.name} (ID ${mod.slave_id})`;
-        wrap.appendChild(title);
-
-        // Buttons-container
-        const btns = document.createElement('div');
-        btns.className = 'relay-buttons';
-        wrap.appendChild(btns);
-
-        // Per coil een on/off-knop
-        mod.states.forEach((state, coil) => {
-          const btn = document.createElement('button');
-          btn.className = `onoff-button ${state.toLowerCase()}`;
-          btn.id        = `relay-${mod.idx}-${coil}`;
-          btn.textContent = coil;
-          btn.onclick = () => {
-            socket.emit('toggle_relay', {
-              unit_idx: mod.idx,
-              coil_idx: coil
-            });
-          };
-          btns.appendChild(btn);
-        });
+      socket.emit("toggle_relay", {
+        unit_idx: unitIdx,
+        coil_idx: coilIdx
       });
     });
+  });
 
-    // Update na toggle
-    socket.on('relay_toggled', msg => {
-      const btn = document.getElementById(`relay-${msg.unit_idx}-${msg.coil_idx}`);
-      btn.classList.toggle('on',  msg.state === 'ON');
-      btn.classList.toggle('off', msg.state === 'OFF');
-    });
+  socket.on("relay_toggled", msg => {
+    const unitEl = document.querySelector(`.relay-module[data-unit-idx='${msg.unit_idx}']`);
+    if (!unitEl) return;
 
-    // Foutmeldingen
-    socket.on('relay_error', err => {
-      alert('Relay error: ' + err.error);
-    });
-  </script>
+    const button = unitEl.querySelector(`.onoff-button[data-coil-idx='${msg.coil_idx}']`);
+    if (!button) return;
+
+    button.classList.remove("on", "off");
+    button.classList.add(msg.state.toLowerCase());
+  });
+
+  socket.on("relay_error", msg => {
+    alert("Fout bij schakelen: " + msg.error);
+  });
+</script>
 {% endblock %}
