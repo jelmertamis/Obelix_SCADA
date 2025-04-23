@@ -1,10 +1,11 @@
 import time
 import sqlite3
 import logging
+from threading import Lock
 
 import minimalmodbus
 import serial
-from flask import Flask, render_template, request
+from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 
 # ─── Configuration ──────────────────────────────────────────────────────────
@@ -35,6 +36,9 @@ clients       = []
 fallback_mode = False
 log_messages  = []
 MAX_LOG       = 20
+
+# ─── Concurrency lock voor RS-485 ───────────────────────────────────────────
+modbus_lock = Lock()
 
 # ─── Logging setup ──────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -142,10 +146,11 @@ def init_modbus():
             inst.clear_buffers_before_each_transaction = True
 
             # quick test
-            if u['type']=='relay':
-                inst.read_bit(0, functioncode=1)
-            else:
-                inst.read_register(0, functioncode=4)
+            with modbus_lock:
+                if u['type']=='relay':
+                    inst.read_bit(0, functioncode=1)
+                else:
+                    inst.read_register(0, functioncode=4)
 
             clients.append(inst)
             log(f"Modbus OK voor {u['name']} (ID {u['slave_id']})")
@@ -164,7 +169,8 @@ def sensor_monitor():
                 inst = clients[i]
                 for ch in range(4):
                     try:
-                        raw = inst.read_register(ch, functioncode=4)
+                        with modbus_lock:
+                            raw = inst.read_register(ch, functioncode=4)
                         cal = get_calibration(i, ch)
                         val = raw * cal['scale'] + cal['offset']
                         data.append({
@@ -186,16 +192,16 @@ socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 # ─── Relay helper using batch read_bits ────────────────────────────────────
 def read_relay_states(idx):
     inst = clients[idx]
-    try:
-        bits = inst.read_bits(0, 8, functioncode=1)
-    except Exception:
-        bits = []
-        for coil in range(8):
-            try:
-                bits.append(inst.read_bit(coil, functioncode=1))
-            except:
-                bits.append(False)
-    # return boolean list
+    with modbus_lock:
+        try:
+            bits = inst.read_bits(0, 8, functioncode=1)
+        except Exception:
+            bits = []
+            for coil in range(8):
+                try:
+                    bits.append(inst.read_bit(coil, functioncode=1))
+                except:
+                    bits.append(False)
     return bits
 
 # ─── WebSocket: Relays ──────────────────────────────────────────────────────
@@ -215,16 +221,16 @@ def ws_relays_connect(auth):
 
 @socketio.on('toggle_relay', namespace='/relays')
 def ws_toggle_relay(msg):
-    idx    = msg['unit_idx']
-    coil   = msg['coil_idx']
-    want   = msg.get('state')  # "ON" of "OFF"
-    inst   = clients[idx]
+    idx   = msg['unit_idx']
+    coil  = msg['coil_idx']
+    want  = msg['state']  # "ON" of "OFF"
+    inst  = clients[idx]
     try:
-        # schrijf direct de gevraagde waarde
-        if want == 'ON':
-            inst.write_bit(coil, True, functioncode=5)
-        else:
-            inst.write_bit(coil, False, functioncode=5)
+        with modbus_lock:
+            if want == 'ON':
+                inst.write_bit(coil, True, functioncode=5)
+            else:
+                inst.write_bit(coil, False, functioncode=5)
         emit('relay_toggled', {
             'unit_idx': idx,
             'coil_idx': coil,
@@ -238,7 +244,7 @@ def ws_toggle_relay(msg):
 @socketio.on('connect', namespace='/sensors')
 def ws_sensors_connect(auth):
     log("SocketIO: /sensors connected")
-    # sensor_monitor wordt in de achtergrond gestart
+    # sensor_monitor draait al op de achtergrond
 
 # ─── WebSocket: Calibration ─────────────────────────────────────────────────
 @socketio.on('connect', namespace='/cal')
@@ -284,12 +290,15 @@ def ws_aio_connect(auth):
     rows = []
     inst = clients[AIO_IDX]
     for ch in range(4):
-        raw_out  = inst.read_register(ch, functioncode=3)
+        with modbus_lock:
+            raw_out  = inst.read_register(ch, functioncode=3)
         phys_out = round((raw_out/4095.0)*20.0,2)
         pct      = round((phys_out-4.0)/16.0*100.0,1) if phys_out>4.0 else None
         rows.append({
-            'channel':ch,'raw_out':raw_out,
-            'phys_out':phys_out,'percent_out':pct
+            'channel':    ch,
+            'raw_out':    raw_out,
+            'phys_out':   phys_out,
+            'percent_out':pct
         })
     emit('aio_init', rows, namespace='/aio')
 
@@ -299,7 +308,8 @@ def ws_aio_set(msg):
     mA      = 4.0 + (pct/100.0)*16.0
     raw     = int((mA/20.0)*4095)
     inst    = clients[AIO_IDX]
-    inst.write_register(ch, raw, functioncode=6)
+    with modbus_lock:
+        inst.write_register(ch, raw, functioncode=6)
     emit('aio_updated', {
       'channel':    ch,
       'raw_out':    raw,
@@ -321,7 +331,7 @@ def ws_r302_connect(auth):
     }
     compressors = {
         num: {
-            'mode': get_setting(f'compressor{num}_mode', DEFAULT_COMPRESSOR_MODE),
+            'mode': get_setting(f'compressor{num}_mode', DEFAULT_COMPRESSER_MODE),
             'freq': float(get_setting(f'compressor{num}_freq', 0.0))
         }
         for num in (1,2)
@@ -359,11 +369,15 @@ def index():
 
 @app.route('/relays')
 def relays():
-    relay_units = [
-        {'idx': i, 'slave_id': u['slave_id'], 'name': u['name']}
-        for i,u in enumerate(UNITS)
-        if u['type']=='relay'
-    ]
+    relay_units = []
+    for i,u in enumerate(UNITS):
+        if u['type']=='relay':
+            relay_units.append({
+                'idx':        i,
+                'slave_id':   u['slave_id'],
+                'name':       u['name'],
+                'coil_count': 8
+            })
     return render_template('relays.html', relays=relay_units)
 
 @app.route('/sensors')
@@ -382,7 +396,6 @@ def aio():
 def r302():
     return render_template('R302.html')
 
-# ─── Main ───────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
     init_modbus()

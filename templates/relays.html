@@ -8,14 +8,32 @@
   <style>
     .onoff-button {
       padding: .5em 1em;
-      margin: .5em;
-      border: none;
-      cursor: pointer;
+      margin: .2em;
+      border: 2px solid #333;
       border-radius: .25em;
-      font-size: 1rem;
+      background: #f0f0f0;
+      color: #333;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background .2s, color .2s, opacity .1s;
     }
-    .onoff-button.on  { background: lightgreen; }
-    .onoff-button.off { background: lightcoral; }
+    .onoff-button.on {
+      background: #4caf50;
+      color: white;
+    }
+    .onoff-button.off {
+      background: #f44336;
+      color: white;
+    }
+    .onoff-button:hover {
+      opacity: .8;
+    }
+    .relay-unit {
+      margin-bottom: 1em;
+      padding: .5em;
+      border: 1px solid #ccc;
+      border-radius: .5em;
+    }
   </style>
 </head>
 <body>
@@ -23,7 +41,7 @@
     {% for unit in relays %}
       <div class="relay-unit" data-unit-idx="{{ unit.idx }}">
         <h3>{{ unit.name }}</h3>
-        {% for coil_idx in range(8) %}
+        {% for coil_idx in range(unit.coil_count) %}
           <button
             class="onoff-button off"
             data-unit-idx="{{ unit.idx }}"
@@ -53,7 +71,7 @@
       });
     });
 
-    // 2) Na toggle: update met de precieze state uit de server
+    // 2) Na toggle: update met precieze state uit server
     socket.on('relay_toggled', data => {
       const { unit_idx, coil_idx, state } = data;
       const btn = container.querySelector(
@@ -70,13 +88,17 @@
       const btn      = e.target;
       const unitIdx  = Number(btn.dataset.unitIdx);
       const coilIdx  = Number(btn.dataset.coilIdx);
-      // als hij aan is, willen we OFF, anders ON
       const newState = btn.classList.contains('on') ? 'OFF' : 'ON';
       socket.emit('toggle_relay', {
         unit_idx: unitIdx,
         coil_idx: coilIdx,
         state:    newState
       });
+    });
+
+    // 4) Foutmeldingen loggen
+    socket.on('relay_error', err => {
+      console.error('Relay error:', err.error);
     });
   });
   </script>
