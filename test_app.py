@@ -82,7 +82,7 @@ def sensor_monitor(clients):
                 except Exception as e:
                     log.warning(f"  Fout bij {u['name']} Ch{ch}: {e}")
         print('-' * 40)
-        time.sleep(1)
+        time.sleep(3)
 
 if __name__ == '__main__':
     clients = init_modbus_clients()
