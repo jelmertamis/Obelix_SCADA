@@ -331,7 +331,7 @@ def ws_r302_connect(auth):
     }
     compressors = {
         num: {
-            'mode': get_setting(f'compressor{num}_mode', DEFAULT_COMPRESSER_MODE),
+            'mode': get_setting(f'compressor{num}_mode', DEFAULT_COMPRESSOR_MODE),
             'freq': float(get_setting(f'compressor{num}_freq', 0.0))
         }
         for num in (1,2)
