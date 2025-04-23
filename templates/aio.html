@@ -3,59 +3,75 @@
 <head>
   <meta charset="utf-8">
   <title>EX04AIO I/O Interface</title>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 1rem; text-align: center; }
-    h1 { margin-bottom: 1rem; }
-    table { border-collapse: collapse; margin: auto; width: 90%; }
+    body { font-family:sans-serif; padding:1rem; text-align:center; }
+    h1 { margin-bottom:1rem; }
+    table { border-collapse:collapse; margin:auto; width:90%; }
     th, td { border:1px solid #ccc; padding:8px; text-align:center; }
-    th { background: #f0f0f0; }
-    form { margin:0; }
-    input[type=number] { width: 4em; padding: 0.2rem; margin-right: 0.4rem; }
+    th { background:#f0f0f0; }
+    input[type=number] { width:4em; padding:0.2rem; }
     button {
-      padding: 0.3rem 0.6rem;
-      font-size: 0.9rem;
-      border: none;
-      border-radius: 4px;
-      background: #007bff;
-      color: #fff;
-      cursor: pointer;
+      padding:0.3rem 0.6rem; margin-left:0.4rem;
+      background:#007bff; color:#fff; border:none; border-radius:4px;
+      cursor:pointer;
     }
-    button:hover { background: #0056b3; }
+    button:hover { background:#0056b3; }
+    .primary-btn {
+      display:inline-block; padding:.6rem 1.2rem; margin:1rem auto;
+      background:#28a745; color:#fff; border:none; border-radius:.4rem;
+      text-decoration:none; font-weight:bold;
+    }
   </style>
 </head>
 <body>
-  <h1>{{ unit.name }} I/O Interface</h1>
-  <p>Fallback Mode: <strong>{{ 'Yes' if fallback_mode else 'No' }}</strong></p>
+  <h1>EX04AIO I/O Interface</h1>
   <p><a href="{{ url_for('index') }}" class="primary-btn">← Terug naar Dashboard</a></p>
-
   <table>
     <thead>
       <tr>
-        <th>Channel</th>
-        <th>Raw Out</th>
-        <th>Phys Out (mA)</th>
-        <th>% Out</th>
-        <th>Set %</th>
+        <th>Channel</th><th>Raw Out</th><th>Phys Out (mA)</th>
+        <th>% Out</th><th>Set %</th>
       </tr>
     </thead>
-    <tbody>
-      {% for r in readings %}
-      <tr>
-        <td>{{ r.channel }}</td>
-        <td>{{ r.raw_out if r.raw_out is not none else '—' }}</td>
-        <td>{{ r.phys_out if r.phys_out is not none else '—' }}</td>
-        <td>{{ r.percent_out if r.percent_out is not none else '—' }}</td>
-        <td>
-          <form method="post" action="{{ url_for('aio') }}">
-            <input type="hidden" name="channel" value="{{ r.channel }}">
-            <input type="number" name="percent_value" step="0.1"
-                   value="{{ r.percent_out if r.percent_out is not none else '' }}">
-            <button type="submit">Set</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
+    <tbody id="aioBody"></tbody>
   </table>
+
+  <script>
+    const socket = io('/aio');
+    const body   = document.getElementById('aioBody');
+
+    socket.on('aio_init', rows => {
+      body.innerHTML = '';
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.channel}</td>
+          <td>${r.raw_out}</td>
+          <td>${r.phys_out}</td>
+          <td>${r.percent_out ?? '—'}</td>
+          <td>
+            <input type="number" id="in${r.channel}"
+                   value="${r.percent_out ?? ''}" step="0.1">
+            <button onclick="setPct(${r.channel})">Set</button>
+          </td>
+        `;
+        body.appendChild(tr);
+      });
+    });
+
+    socket.on('aio_updated', upd => {
+      const tr = body.querySelectorAll('tr')[upd.channel];
+      tr.children[1].textContent = upd.raw_out;
+      tr.children[2].textContent = upd.phys_out;
+      tr.children[3].textContent = upd.percent_out;
+      document.getElementById(`in${upd.channel}`).value = upd.percent_out;
+    });
+
+    function setPct(ch) {
+      const val = document.getElementById(`in${ch}`).value;
+      socket.emit('aio_set', { channel: ch, percent: val });
+    }
+  </script>
 </body>
 </html>

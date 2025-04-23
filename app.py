@@ -315,6 +315,45 @@ def ws_set_cal(msg):
         emit('cal_error', {'error': str(e)})
 
 # ----------------------------
+# WebSocket: EX04AIO namespace
+# ----------------------------
+@socketio.on('connect', namespace='/aio')
+def ws_aio_connect(auth):
+    # stuur initial state
+    idx = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
+    inst = clients[idx]
+    rows = []
+    for ch in range(4):
+        raw_out  = inst.read_register(ch, functioncode=3)
+        phys_out = round((raw_out/4095.0)*20.0, 2)
+        pct      = round((phys_out-4.0)/16.0*100.0, 1) if phys_out > 4.0 else None
+        rows.append({
+            'channel':     ch,
+            'raw_out':     raw_out,
+            'phys_out':    phys_out,
+            'percent_out': pct
+        })
+    emit('aio_init', rows)
+
+@socketio.on('aio_set', namespace='/aio')
+def ws_aio_set(msg):
+    idx     = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
+    ch      = msg['channel']
+    percent = float(msg['percent'])
+    # % → mA → raw
+    mA  = 4.0 + (percent/100.0)*16.0
+    raw = int((mA/20.0)*4095)
+    clients[idx].write_register(ch, raw, functioncode=6)
+    # back to client
+    emit('aio_updated', {
+        'channel':     ch,
+        'raw_out':     raw,
+        'phys_out':    round(mA,2),
+        'percent_out': percent
+    })
+
+
+# ----------------------------
 # HTTP Routes
 # ----------------------------
 @app.route('/')
@@ -329,48 +368,10 @@ def relays():
 def sensors():
     return render_template('sensors.html')
 
-@app.route('/aio', methods=['GET','POST'])
+@app.route('/aio')
 def aio():
-    idx = next(i for i,u in enumerate(UNITS) if u['type']=='aio')
-    inst = clients[idx]
-    # load saved setpoints
-    saved = {}
-    for ch in range(4):
-        v = get_setting(f"aio_ch{ch}_setpoint", None)
-        saved[ch] = float(v) if v is not None else None
-    if request.method == 'POST':
-        ch     = int(request.form['channel'])
-        pct    = float(request.form['percent_value'])
-        mA     = 4.0 + (pct/100.0)*16.0
-        raw    = int((mA/20.0)*4095)
-        inst.write_register(ch, raw, functioncode=6)
-        set_setting(f"aio_ch{ch}_setpoint", pct)
-        saved[ch] = pct
-        time.sleep(0.1)
-    readings = []
-    for ch in range(4):
-        try:
-            raw_in  = inst.read_register(ch, functioncode=4)
-            raw_out = inst.read_register(ch, functioncode=3)
-            cal     = get_calibration(idx, ch)
-            phys_in = round(raw_in*cal['scale'] + cal['offset'], 2)
-            phys_out= round((raw_out/4095.0)*20.0, 2)
-            pct_out = round((phys_out-4.0)/16.0*100.0, 1) if phys_out>4.0 else None
-        except:
-            raw_in=raw_out=phys_in=phys_out=pct_out=None
-        readings.append({
-            'channel':      ch,
-            'raw_in':       raw_in,
-            'phys_in':      phys_in,
-            'raw_out':      raw_out,
-            'phys_out':     phys_out,
-            'percent_out':  pct_out,
-            'saved_percent':saved[ch]
-        })
-    return render_template('aio.html',
-                           readings=readings,
-                           unit=UNITS[idx],
-                           fallback_mode=fallback_mode)
+    # Nu alleen nog de template serveren.
+    return render_template('aio.html', fallback_mode=fallback_mode)
 
 @app.route('/calibrate')
 def calibrate():
