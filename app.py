@@ -406,4 +406,4 @@ if __name__ == '__main__':
     init_db()
     init_modbus()
     socketio.start_background_task(sensor_monitor)
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True, use_reloader=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False, use_reloader=False)
