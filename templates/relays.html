@@ -14,8 +14,9 @@
           {% for coil in r.coils %}
             <button
               class="onoff-button {{ 'on' if coil else 'off' }}"
+              data-unit-idx="{{ r.idx }}"
               data-coil-idx="{{ loop.index0 }}">
-              {{ coil ? 'ON' : 'OFF' }}
+              {{ 'ON' if coil else 'OFF' }}
             </button>
           {% endfor %}
         </div>
@@ -32,7 +33,7 @@
     const socket = io("/relays");
     const container = document.getElementById("relaysContainer");
 
-    // 1) Listen for the initial states
+    // 1) Init states
     socket.on("init_relays", relays => {
       relays.forEach(r => {
         const moduleEl = container.querySelector(
@@ -50,12 +51,12 @@
       });
     });
 
-    // 2) Emit toggles
+    // 2) Toggle on click
     container.addEventListener("click", e => {
       if (!e.target.matches(".onoff-button")) return;
       const btn     = e.target;
+      const unitIdx = Number(btn.dataset.unitIdx);
       const coilIdx = Number(btn.dataset.coilIdx);
-      const unitIdx = Number(btn.closest(".relay-module").dataset.unitIdx);
       socket.emit("toggle_relay", { unit_idx: unitIdx, coil_idx: coilIdx });
     });
 
