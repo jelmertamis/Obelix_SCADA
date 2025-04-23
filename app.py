@@ -399,7 +399,7 @@ def calibrate():
 
 @app.route('/r302')
 def r302():
-    return render_template('r302.html')
+    return render_template('R302.html')
 
 # ----------------------------
 # Main
