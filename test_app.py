@@ -1,91 +1,65 @@
-# sensors_test_app.py
-from flask import Flask, render_template_string
-from flask_socketio import SocketIO
-import threading, time, random
+# test_app_modbus.py
+# Eenvoudige testapp voor Modbus-ANSI sensoren (EX04AIS) uitlezen via seriële poort
 
-app = Flask(__name__)
-socketio = SocketIO(app)
+import time
+from pymodbus.client.sync import ModbusSerialClient as ModbusClient
+import logging
 
-# Eenvoudige pagina met exact dezelfde HTML/JS als jouw sensors.html
-PAGE = """
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Test Sensor Uitlezingen</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 1rem; }
-    table { border-collapse: collapse; width: 100%; max-width: 600px; }
-    th, td { border: 1px solid #ccc; padding: .5rem; }
-    th { background: #007bff; color: #fff; }
-  </style>
-</head>
-<body>
-  <h1>Sensor Uitlezingen (Test)</h1>
-  <table>
-    <thead>
-      <tr>
-        <th>Naam</th>
-        <th>Slave ID</th>
-        <th>Kanaal</th>
-        <th>Ruwe Waarde</th>
-        <th>Gekalibreerd</th>
-      </tr>
-    </thead>
-    <tbody id="sensorBody"></tbody>
-  </table>
+# Logging instellen om Modbus-communicatie te zien
+logging.basicConfig()
+log = logging.getLogger()
+log.setLevel(logging.INFO)
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('➡️ Connecting to WS…');
-      const socket = io();
+# Configuratie Modbus-serial
+PORT = '/dev/ttyUSB0'      # Pas aan naar jouw poort, bijv. 'COM3' op Windows
+BAUDRATE = 19200           # Baudrate van je Modbus-module
+PARITY = 'N'               # Pariteit: N=none, E=even, O=odd
+STOPBITS = 1               # Stopbits
+BYTESIZE = 8               # Databits
+TIMEOUT = 1                # Timeout in seconden
 
-      socket.on('connect', () => {
-        console.log('✅ WS connected');
-      });
-      socket.on('sensor_update', readings => {
-        console.log('🔔 sensor_update:', readings);
-        const tbody = document.getElementById('sensorBody');
-        tbody.innerHTML = '';
-        readings.forEach(r => {
-          const tr = document.createElement('tr');
-          ['name','slave_id','channel','raw','value'].forEach(key => {
-            const td = document.createElement('td');
-            td.textContent = r[key];
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        });
-      });
-    });
-  </script>
-</body>
-</html>
-"""
+# Slave IDs en aantal kanalen per module
+SLAVE_UNITS = [5, 6, 7, 8]  # EX04AIS units
+CHANNELS_PER_UNIT = 4       # aantal analoge ingangen per unit
 
-@app.route('/')
-def index():
-    return render_template_string(PAGE)
+def main():
+    # Maak Modbus client aan
+    client = ModbusClient(
+        method='rtu',
+        port=PORT,
+        baudrate=BAUDRATE,
+        parity=PARITY,
+        stopbits=STOPBITS,
+        bytesize=BYTESIZE,
+        timeout=TIMEOUT
+    )
+    if not client.connect():
+        log.error(f"Kan Modbus-poort {PORT} niet openen.")
+        return
+    log.info(f"Verbonden met Modbus op {PORT} (baud={BAUDRATE})")
 
-def sensor_broadcast_loop():
-    """Simuleer elke seconde 8 kanaalmetingen."""
-    while True:
-        dummy = [{
-            'name':     'TestSensor',
-            'slave_id': sid,
-            'channel':  ch,
-            'raw':      random.randint(0, 4095),
-            'value':    round(random.random() * 5.0, 2)
-        } for sid in (5,6,7,8) for ch in range(2)]  # bv. 4 units × 2 kanalen
-        socketio.emit('sensor_update', dummy)
-        time.sleep(1)
+    try:
+        while True:
+            for slave_id in SLAVE_UNITS:
+                for ch in range(CHANNELS_PER_UNIT):
+                    # EX04AIS gebruikt function code 4 (input registers)
+                    result = client.read_input_registers(address=ch, count=1, unit=slave_id)
+                    if result.isError():
+                        log.warning(f"Fout bij lezen slave {slave_id} ch{ch}: {result}")
+                        continue
+                    raw = result.registers[0]
+                    # Simpele kalibratie, vervang door jouw eigen functie
+                    scale = 1.0
+                    offset = 0.0
+                    value = raw * scale + offset
+                    print(f"Slave {slave_id} Ch{ch}: raw={raw}  value={value}")
+            print('-' * 40)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        log.info("Stoppen op gebruikersverzoek.")
+    finally:
+        client.close()
+        log.info("Modbus client gesloten.")
 
 if __name__ == '__main__':
-    # start de broadcast-thread
-    t = threading.Thread(target=sensor_broadcast_loop, daemon=True)
-    t.start()
-
-    # run op poort 5002
-    socketio.run(app, host='0.0.0.0', port=5002)
+    main()
