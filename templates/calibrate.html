@@ -1,33 +1,11 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Sensor Range Instellingen</title>
-  <style>
-    body { font-family: sans-serif; padding:1rem; }
-    h1 { text-align:center; margin-bottom:1rem; }
-    table { border-collapse: collapse; width: 90%; margin: auto; }
-    th, td { border:1px solid #ccc; padding:0.5rem; text-align: center; }
-    th { background: #f0f0f0; }
-    input[type=number] { width:4em; }
-    button {
-      padding:0.3rem 0.6rem;
-      font-size:0.9rem;
-      border:none; border-radius:4px;
-      background:#007bff; color:white;
-      cursor:pointer;
-    }
-    button:hover { background:#0056b3; }
-    .status { color:green; font-size:0.9rem; }
-    .error  { color:red;   font-size:0.9rem; }
-    a.btn-back { display:block; text-align:center; margin-bottom:1rem; }
-  </style>
-</head>
-<body>
-  <h1>Sensor Range Instellingen</h1>
-  <a href="{{ url_for('index') }}" class="btn-back">← Terug naar Dashboard</a>
+{% extends "base.html" %}
 
-  <table>
+{% block title %}Sensor Range Instellingen{% endblock %}
+
+{% block content %}
+<section class="sensor-container">
+  <h1>Sensor Range Instellingen</h1>
+  <table class="sensor-table">
     <thead>
       <tr>
         <th>Module</th><th>Slave ID</th><th>Kanaal</th>
@@ -56,72 +34,10 @@
       {% endfor %}
     </tbody>
   </table>
+</section>
+{% endblock %}
 
-  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    const RAW1 = 819, RAW2 = 4095;
-    const socket = io('/cal');
-    const rows = document.querySelectorAll('tbody tr');
-
-    // Init: vul uit DB
-    socket.on('init_cal', data => {
-      rows.forEach(row => {
-        const key = `${row.dataset.unit}-${row.dataset.channel}`;
-        if (data[key]) {
-          const { scale, offset, phys_min, phys_max } = data[key];
-          row.querySelector('.slope').textContent  = scale.toFixed(4);
-          row.querySelector('.offset').textContent = offset.toFixed(2);
-          row.querySelector('.minVal').value        = phys_min.toFixed(2);
-          row.querySelector('.maxVal').value        = phys_max.toFixed(2);
-        }
-      });
-    });
-
-    // Na opslaan: update die rij
-    socket.on('cal_saved', info => {
-      const sel = `tr[data-unit="${info.unit}"][data-channel="${info.channel}"]`;
-      const row = document.querySelector(sel);
-      row.querySelector('.slope').textContent    = info.scale.toFixed(4);
-      row.querySelector('.offset').textContent   = info.offset.toFixed(2);
-      row.querySelector('.minVal').value         = info.phys_min.toFixed(2);
-      row.querySelector('.maxVal').value         = info.phys_max.toFixed(2);
-      const fb = row.querySelector('.feedback');
-      fb.textContent = '✔︎ Opslaan gelukt';
-      fb.className   = 'feedback status';
-      setTimeout(() => fb.textContent = '', 3000);
-    });
-
-    socket.on('cal_error', err => {
-      alert('Kalibratie fout: ' + err.error);
-    });
-
-    // Button‑handler
-    rows.forEach(row => {
-      row.querySelector('.saveBtn').addEventListener('click', () => {
-        const unit    = +row.dataset.unit;
-        const channel = +row.dataset.channel;
-        const phys1   = parseFloat(row.querySelector('.minVal').value);
-        const phys2   = parseFloat(row.querySelector('.maxVal').value);
-        const fb      = row.querySelector('.feedback');
-
-        if (isNaN(phys1) || isNaN(phys2)) {
-          fb.textContent = 'Vul beide waarden in';
-          fb.className   = 'feedback error';
-          return;
-        }
-        fb.textContent = '';
-
-        socket.emit('set_cal_points', {
-          unit, channel,
-          raw1: RAW1, phys1,
-          raw2: RAW2, phys2
-        });
-      });
-    });
-
-    // Vraag init
-    socket.emit('connect');    // zorgt dat ws_cal_connect in app.py vuurt
-    socket.emit('init_cal');   // en vraagt de bestaande ranges
-  </script>
-</body>
-</html>
+{% block scripts %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='js/calibrate.js') }}"></script>
+{% endblock %}
