@@ -2,84 +2,27 @@
 
 {% block title %}Sensor Uitlezingen{% endblock %}
 
-{% block head %}
-<style>
-  .sensor-table {
-    border-collapse: collapse;
-    width: 100%;
-    max-width: 900px;
-    margin: 1rem auto;
-  }
-  .sensor-table th,
-  .sensor-table td {
-    border: 1px solid #ccc;
-    padding: 0.5rem 1rem;
-    text-align: center;
-  }
-  .sensor-table th {
-    background-color: #007bff;
-    color: #fff;
-  }
-  .sensor-table tbody tr:nth-child(even) {
-    background-color: #f9f9f9;
-  }
-</style>
-{% endblock %}
-
 {% block content %}
   <h1>Sensor Uitlezingen</h1>
-  <table id="sensorTable" class="sensor-table">
-    <thead>
-      <tr>
-        <th>Naam</th>
-        <th>Slave ID</th>
-        <th>Kanaal</th>
-        <th>Ruwe Waarde</th>
-        <th>Gekalibreerd</th>
-      </tr>
-    </thead>
-    <tbody id="sensorBody">
-      <tr><td colspan="5">Wachten op data…</td></tr>
-    </tbody>
-  </table>
+  <div class="sensor-container">
+    <table id="sensorTable" class="sensor-table">
+      <thead>
+        <tr>
+          <th>Naam</th>
+          <th>Slave ID</th>
+          <th>Kanaal</th>
+          <th>Ruwe Waarde</th>
+          <th>Gekalibreerd</th>
+        </tr>
+      </thead>
+      <tbody id="sensorBody">
+        <tr><td colspan="5" class="no-data">Wachten op data…</td></tr>
+      </tbody>
+    </table>
+  </div>
 {% endblock %}
 
 {% block scripts %}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    const socket = io('/sensors');
-    const tbody  = document.getElementById('sensorBody');
-
-    socket.on('connect', () => {
-      console.log('✅ WebSocket verbonden op /sensors');
-      tbody.innerHTML = '<tr><td colspan="5">Verbonden – wachten op sensor_update…</td></tr>';
-    });
-
-    socket.on('sensor_update', readings => {
-      console.log('🔔 sensor_update ontvangen:', readings);
-      if (readings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">Geen sensoren gevonden.</td></tr>';
-        return;
-      }
-      // Bouw rijen
-      tbody.innerHTML = '';
-      readings.forEach(r => {
-        const tr = document.createElement('tr');
-        ['name','slave_id','channel','raw','value'].forEach(key => {
-          const td = document.createElement('td');
-          let txt = r[key] !== null ? r[key] : '—';
-          // value afronden op 2 decimalen
-          if (key === 'value') txt = r.value.toFixed(2);
-          td.textContent = txt;
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-    });
-
-    socket.on('disconnect', () => {
-      console.warn('❌ WebSocket verbinding verbroken');
-      tbody.innerHTML = '<tr><td colspan="5">Verbinding verbroken.</td></tr>';
-    });
-  </script>
+  <script src="{{ url_for('static', filename='js/sensors.js') }}"></script>
 {% endblock %}

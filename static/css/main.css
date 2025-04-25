@@ -1,270 +1,258 @@
-/* Reset en basis */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* ===============================
+   🌐 Algemeen: Reset + Basisthema
+   =============================== */
 
-/* Body & typografie */
-body {
-  font-family: "Segoe UI", sans-serif;
-  background-color: #f4f4f4;
-  color: #333;
-  line-height: 1.6;
-  padding: 1rem;
-  text-align: center;
-}
-
-/* Koppen */
-h1 {
-  margin-bottom: 1rem;
-}
-
-/* Terug-knop */
-.btn {
-  display: inline-block;
-  margin: 0.5rem 0 1.5rem;
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  background: #28a745;
-  color: #fff;
-  text-decoration: none;
-  border-radius: 5px;
-  transition: background 0.2s ease;
-}
-.btn:hover {
-  background: #218838;
-}
-
-/* Dashboard-knoppen */
-.primary-btn {
-  display: inline-block;
-  padding: 1rem 2rem;
-  margin: 0.5rem;
-  font-size: 1.1rem;
-  font-weight: bold;
-  text-decoration: none;
-  background-color: #007bff;
-  color: #fff;
-  border-radius: 0.3rem;
-  transition: background-color 0.2s ease;
-}
-.primary-btn:hover {
-  background-color: #0056b3;
-}
-
-/* Container helper voor relays */
-#relaysContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  margin: 2rem auto;
-  width: 100%;
-  max-width: 1200px;
-}
-
-/* Relay-module grid */
-.relay-module {
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  display: grid;
-  grid-template-columns: 280px auto;
-  align-items: center;
-  padding: 1rem;
-  gap: 1rem;
-  width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-  overflow-x: auto;
-}
-
-/* Relay-header links */
-.relay-header {
-  text-align: left;
-}
-.relay-header h2 {
-  font-size: 1.1rem;
-  margin: 0;
-}
-.relay-header small {
-  display: block;
-  font-size: 0.8rem;
-  color: #666;
-}
-
-/* Coils horizontaal */
-.relay-buttons {
-  display: grid;
-  grid-template-columns: repeat(8, 4.5rem);
-  gap: 0.5rem;
-  justify-content: start;
-}
-
-/* On/Off-knoppen */
-.onoff-button {
-  width: 4.5rem;
-  height: 4rem;
-  font-size: 1.2rem;
-  border: none;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  background-color: #eee;
-  color: #333;
-  transition: background-color 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.onoff-button.on {
-  background-color: #28a745;
-  color: #fff;
-}
-.onoff-button.on:hover {
-  background-color: #218838;
-}
-.onoff-button.off {
-  background-color: #dc3545;
-  color: #fff;
-}
-.onoff-button.off:hover {
-  background-color: #c82333;
-}
-
-/* Relays: Neutrale staat bij laden */
-.onoff-button.loading {
-  background-color: #ccc;
-  color: #666;
-}
-
-/* Sectie-layout */
-section {
-  margin: 2rem auto;
-  width: 100%;
-  max-width: 1200px;
-}
-
-/* Sensor-container: horizontaal scrollbaar bij smalle schermen */
-.sensor-container {
-  overflow-x: auto;
-  margin-bottom: 2rem;
-  background: #fff;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-/* Tabel lay-out */
-.sensor-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 600px;
-}
-
-.sensor-table th,
-.sensor-table td {
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.sensor-table thead {
-  background-color: #007bff;
-  color: #fff;
-}
-
-.no-data {
-  font-style: italic;
-  color: #666;
-  text-align: center;
-  margin-top: 1rem;
-}
-
-/* Calibratie: Sensor Ranges */
-.sensor-table td input[type="number"] {
-  width: 5em;
-  padding: 0.3rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.saveBtn {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.9rem;
-  border: none;
-  border-radius: 4px;
-  background: #007bff;
-  color: white;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-.saveBtn:hover {
-  background: #0056b3;
-}
-
-.feedback {
-  font-size: 0.9rem;
-  text-align: center;
-}
-.feedback.status {
-  color: green;
-}
-.feedback.error {
-  color: red;
-}
-
-/* AIO Page */
-.aio-container {
-  margin-bottom: 2rem;
-  background: #fff;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  overflow-x: auto;
-}
-
-.aio-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 600px;
-}
-
-.aio-table th,
-.aio-table td {
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.aio-table thead {
-  background-color: #007bff;
-  color: #fff;
-}
-
-.aio-table input[type="number"] {
-  width: 4em;
-  padding: 0.3rem;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-.aio-table button {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.9rem;
-  border: none;
-  border-radius: 4px;
-  background: #007bff;
-  color: white;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.aio-table button:hover {
-  background: #0056b3;
-}
+   * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  body {
+    font-family: "Segoe UI", sans-serif;
+    background-color: #f4f4f4;
+    color: #333;
+    line-height: 1.6;
+    padding: 1rem;
+    text-align: center;
+  }
+  
+  h1 {
+    margin-bottom: 1rem;
+  }
+  
+  /* ===============================
+     🔘 Knoppen
+     =============================== */
+  
+  .btn,
+  .primary-btn,
+  .saveBtn,
+  .aio-table button {
+    display: inline-block;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+  }
+  
+  .btn {
+    margin: 0.5rem 0 1.5rem;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    background: #28a745;
+    color: #fff;
+  }
+  .btn:hover {
+    background: #218838;
+  }
+  
+  .primary-btn {
+    padding: 1rem 2rem;
+    margin: 0.5rem;
+    font-size: 1.1rem;
+    background-color: #007bff;
+    color: #fff;
+  }
+  .primary-btn:hover {
+    background-color: #0056b3;
+  }
+  
+  .saveBtn,
+  .aio-table button {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.9rem;
+    border: none;
+    background: #007bff;
+    color: white;
+    cursor: pointer;
+  }
+  .saveBtn:hover,
+  .aio-table button:hover {
+    background: #0056b3;
+  }
+  
+  /* ===============================
+     🔁 Relay View
+     =============================== */
+  
+  #relaysContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin: 2rem auto;
+    width: 100%;
+    max-width: 1200px;
+  }
+  
+  .relay-module {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: grid;
+    grid-template-columns: 280px auto;
+    align-items: center;
+    padding: 1rem;
+    gap: 1rem;
+    max-width: 1100px;
+    overflow-x: auto;
+    margin: 0 auto;
+  }
+  
+  .relay-header {
+    text-align: left;
+  }
+  .relay-header h2 {
+    font-size: 1.1rem;
+  }
+  .relay-header small {
+    font-size: 0.8rem;
+    color: #666;
+  }
+  
+  .relay-buttons {
+    display: grid;
+    grid-template-columns: repeat(8, 4.5rem);
+    gap: 0.5rem;
+    justify-content: start;
+  }
+  
+  .onoff-button {
+    width: 4.5rem;
+    height: 4rem;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    background-color: #eee;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+  }
+  
+  .onoff-button.on {
+    background-color: #28a745;
+    color: #fff;
+  }
+  .onoff-button.on:hover {
+    background-color: #218838;
+  }
+  .onoff-button.off {
+    background-color: #dc3545;
+    color: #fff;
+  }
+  .onoff-button.off:hover {
+    background-color: #c82333;
+  }
+  .onoff-button.loading {
+    background-color: #ccc;
+    color: #666;
+  }
+  
+  /* ===============================
+     📊 Sensor View
+     =============================== */
+  
+  .sensor-container {
+    overflow-x: auto;
+    margin-bottom: 2rem;
+    background: #fff;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .sensor-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  
+  .sensor-table th,
+  .sensor-table td {
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    text-align: left;
+    white-space: nowrap;
+  }
+  
+  .sensor-table thead {
+    background-color: #007bff;
+    color: #fff;
+  }
+  
+  .sensor-table td input[type="number"] {
+    width: 5em;
+    padding: 0.3rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+  }
+  
+  .no-data {
+    font-style: italic;
+    color: #666;
+    text-align: center;
+    margin-top: 1rem;
+  }
+  
+  /* ===============================
+     🧪 All-in-One View (AIO)
+     =============================== */
+  
+  .aio-container {
+    margin-bottom: 2rem;
+    background: #fff;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow-x: auto;
+  }
+  
+  .aio-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  
+  .aio-table th,
+  .aio-table td {
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    text-align: left;
+    white-space: nowrap;
+  }
+  
+  .aio-table thead {
+    background-color: #007bff;
+    color: #fff;
+  }
+  
+  .aio-table input[type="number"] {
+    width: 4em;
+    padding: 0.3rem;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  
+  /* ===============================
+     💬 Feedback
+     =============================== */
+  
+  .feedback {
+    font-size: 0.9rem;
+    text-align: center;
+  }
+  
+  .feedback.status {
+    color: green;
+  }
+  
+  .feedback.error {
+    color: red;
+  }
+  
