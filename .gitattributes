@@ -1,0 +1,12 @@
+# ─── Line-endings consistent houden ─────────────────────────────
+*.html     text eol=lf
+*.css      text eol=lf
+*.js       text eol=lf
+*.py       text eol=lf
+
+# ─── Binaire bestanden: geen diff/merge pogingen ───────────────
+*.db       binary
+
+# ─── Platform junk uitsluiten ──────────────────────────────────
+*.DS_Store export-ignore
+Thumbs.db  export-ignore
