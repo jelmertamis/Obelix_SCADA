@@ -1,3 +1,4 @@
+<!-- templates/calibrate.html -->
 {% extends "base.html" %}
 
 {% block title %}Sensor Range Instellingen{% endblock %}
@@ -8,10 +9,17 @@
   <table class="sensor-table">
     <thead>
       <tr>
-        <th>Module</th><th>Slave ID</th><th>Kanaal</th>
-        <th>Min waarde</th><th>Max waarde</th>
-        <th>Slope</th><th>Offset</th>
-        <th>Actie</th><th>Feedback</th>
+        <th>Module</th>
+        <th>Slave ID</th>
+        <th>Kanaal</th>
+        <th>Min waarde</th>
+        <th>Max waarde</th>
+        <th class="col-unit">Eenheid</th>
+        <th>Saved</th>
+        <th>Slope</th>
+        <th>Offset</th>
+        <th>Actie</th>
+        <th>Feedback</th>
       </tr>
     </thead>
     <tbody>
@@ -24,6 +32,8 @@
             <td>{{ ch }}</td>
             <td><input type="number" step="0.1" class="minVal"></td>
             <td><input type="number" step="0.1" class="maxVal"></td>
+            <td><input type="text" class="unitVal col-unit"></td>
+            <td class="unitDisplay">—</td>
             <td class="slope">—</td>
             <td class="offset">—</td>
             <td><button class="saveBtn">Opslaan</button></td>

@@ -1,6 +1,6 @@
 # Obelix_SCADA: Projectbeschrijving & Samenwerkingsrichtlijn
 
-**Versie:** 1.0  
+**Versie:** 1.1 
 **Laatste update:** 25 april 2025
 
 ## Overzicht
@@ -121,3 +121,4 @@ Bij gebruik van deze prompt door een AI-assistent of ontwikkelaar:
 
 📝 **Graag op deze beginprompt alleen een korte reactie met een check wat momenteel de prioriteit is.**  
 🎯 Vermijd uitgebreide antwoorden — stel liever een gerichte vraag over de volgende focus of benodigde actie binnen het project.
+! graag een code aanpassen per prompt en graag de complete code geven :-)

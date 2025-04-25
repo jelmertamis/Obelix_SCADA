@@ -256,3 +256,9 @@
     color: red;
   }
   
+  /* Sensor Range: smalle kolommen voor eenheid */
+.sensor-table th.col-unit,
+.sensor-table td .col-unit {
+  width: 6em;
+  max-width: 6em;
+}

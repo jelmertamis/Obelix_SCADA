@@ -1,3 +1,5 @@
+# obelix/socketio_events.py
+
 from flask_socketio import emit
 from obelix.config import Config
 from obelix.database import (
@@ -31,7 +33,7 @@ def init_socketio(socketio):
                                     save_relay_state(i, coil, state_str)
                             except Exception as e:
                                 log(f"⚠️ Fout bij verwerken relaisstatus unit {i}, coil {coil}: {e}")
-                                states[coil] = False  # Fallback naar OFF
+                                states[coil] = False
                     out.append({
                         'idx': i,
                         'name': unit['name'],
@@ -42,7 +44,7 @@ def init_socketio(socketio):
                     out.append({
                         'idx': i,
                         'name': unit['name'],
-                        'states': [False] * 8  # Fallback naar alle OFF
+                        'states': [False] * 8
                     })
         log(f"Verstuur init_relays: {out}")
         emit('init_relays', out, namespace='/relays')
@@ -90,21 +92,24 @@ def init_socketio(socketio):
 
     @socketio.on('set_cal_points', namespace='/cal')
     def ws_set_cal(msg):
-        u, ch, raw1, phys1, raw2, phys2 = (
-            msg['unit'], msg['channel'],
-            msg['raw1'], msg['phys1'],
-            msg['raw2'], msg['phys2']
-        )
+        u, ch = msg['unit'], msg['channel']
+        raw1, phys1 = msg['raw1'], msg['phys1']
+        raw2, phys2 = msg['raw2'], msg['phys2']
+        unit_str = msg.get('unitStr', '')
         try:
             if raw1 == raw2:
                 raise ValueError("raw1 en raw2 mogen niet gelijk zijn")
             scale = (phys2 - phys1) / (raw2 - raw1)
             offset = phys1 - scale * raw1
-            save_calibration(u, ch, scale, offset, phys1, phys2)
+            save_calibration(u, ch, scale, offset, phys1, phys2, unit_str)
             emit('cal_saved', {
-                'unit': u, 'channel': ch,
-                'scale': scale, 'offset': offset,
-                'phys_min': phys1, 'phys_max': phys2
+                'unit':     u,
+                'channel':  ch,
+                'scale':    scale,
+                'offset':   offset,
+                'phys_min': phys1,
+                'phys_max': phys2,
+                'unitStr':  unit_str
             }, namespace='/cal')
         except Exception as e:
             emit('cal_error', {'error': str(e)}, namespace='/cal')
@@ -149,15 +154,14 @@ def init_socketio(socketio):
                 raise ValueError(f"Invalid percent: {pct}")
             mA = 4.0 + (pct / 100.0) * 16.0
             raw = int((mA / 20.0) * 4095)
-            clients = get_clients()
-            inst = clients[Config.AIO_IDX]
+            inst = get_clients()[Config.AIO_IDX]
             with modbus_lock:
                 inst.write_register(ch, raw, functioncode=6)
             save_aio_setting(ch, pct)
             emit('aio_updated', {
-                'channel': ch,
-                'raw_out': raw,
-                'phys_out': round(mA, 2),
+                'channel':     ch,
+                'raw_out':     raw,
+                'phys_out':    round(mA, 2),
                 'percent_out': pct
             }, namespace='/aio')
             log(f"✅ AIO channel {ch} set to {pct}%")
@@ -181,8 +185,8 @@ def init_socketio(socketio):
             for num in (1, 2)
         }
         emit('r302_init', {
-            'sensors': sensors,
-            'pumps': pumps,
+            'sensors':     sensors,
+            'pumps':       pumps,
             'compressors': compressors
         }, namespace='/r302')
 
