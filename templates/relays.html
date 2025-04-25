@@ -13,10 +13,10 @@
       <div class="relay-buttons">
         {% for coil_idx in range(unit.coil_count) %}
           <button
-            class="onoff-button off"
+            class="onoff-button loading"
             data-unit-idx="{{ unit.idx }}"
             data-coil-idx="{{ coil_idx }}"
-          >OFF</button>
+          >...</button>
         {% endfor %}
       </div>
     </div>
@@ -25,6 +25,6 @@
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script src="{{ url_for('static', filename='js/relays.js') }}"></script>
 {% endblock %}

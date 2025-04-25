@@ -133,6 +133,12 @@ h1 {
   background-color: #c82333;
 }
 
+/* Relays: Neutrale staat bij laden */
+.onoff-button.loading {
+  background-color: #ccc;
+  color: #666;
+}
+
 /* Sectie-layout */
 section {
   margin: 2rem auto;

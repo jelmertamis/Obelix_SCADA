@@ -3,13 +3,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const socket = io('/relays');
     const container = document.getElementById('relaysContainer');
 
-    // Init: booleans → ON/OFF en juiste classes
     socket.on('init_relays', units => {
         units.forEach(u => {
             u.states.forEach((state, coilIdx) => {
                 const btn = container.querySelector(
                     `.onoff-button[data-unit-idx="${u.idx}"][data-coil-idx="${coilIdx}"]`
                 );
+                btn.classList.remove('loading');
                 btn.classList.toggle('on', state);
                 btn.classList.toggle('off', !state);
                 btn.textContent = state ? 'ON' : 'OFF';
@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Na toggle: update met precieze state uit server
     socket.on('relay_toggled', data => {
         const { unit_idx, coil_idx, state } = data;
         const btn = container.querySelector(
@@ -28,7 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.textContent = state;
     });
 
-    // Klik-handler: bepaal nieuwe gewenste state en stuur mee
     container.addEventListener('click', e => {
         if (!e.target.matches('.onoff-button')) return;
         const btn = e.target;
@@ -42,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Foutmeldingen loggen
     socket.on('relay_error', err => {
         console.error('Relay error:', err.error);
     });
