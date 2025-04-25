@@ -31,7 +31,8 @@ def start_sensor_monitor(socketio):
                             'slave_id': unit['slave_id'],
                             'channel': ch,
                             'raw': raw,
-                            'value': round(val, 2)
+                            'value': round(val, 2),
+                            'unit': cal.get('unit', '')
                         })
                     except Exception as e:
                         log(f"⚠️ Error reading sensor {unit['name']} channel {ch}: {e}")
