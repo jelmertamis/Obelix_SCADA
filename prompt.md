@@ -1,147 +1,123 @@
-Prompt voor samenwerking aan Obelix_SCADA
-Ik werk aan een professioneel SCADA-project genaamd Obelix_SCADA, gericht op real-time monitoring en besturing van industriële systemen.
- GitHub repo: https://github.com/jelmertamis/Obelix_SCADA
- Technologie-stack:
-Backend: Python 3.12, Flask, Flask-SocketIO
+# Obelix_SCADA: Projectbeschrijving & Samenwerkingsrichtlijn
 
-Frontend: Jinja2 templates, CSS, vanilla JavaScript
+**Versie:** 1.0  
+**Laatste update:** 25 april 2025
 
-Database: SQLite (settings.db) voor instellingen, calibraties, en relaisstatussen
+## Overzicht
 
-Communicatie: Modbus RTU over RS-485 (via minimalmodbus) voor sensoren, relais, en AIO-modules
+**Obelix_SCADA** is een professioneel SCADA-project gericht op real-time monitoring en besturing van industriële systemen.
 
-Fallback: DummyModbusClient voor lokale ontwikkeling zonder hardware
+- **GitHub-repository:** https://github.com/jelmertamis/Obelix_SCADA  
+- **Doel:** Een schaalbare, robuuste SCADA-oplossing voor Raspberry Pi, met volledige ondersteuning voor lokale ontwikkeling zonder fysieke hardware.
 
-Logging: Aangepaste logging naar console en (optioneel) bestand (obelix.log)
+---
 
- Ontwikkelomgeving (lokaal):
-OS: Windows 11
+## Technologie-stack
 
-IDE: Visual Studio Code
+### Backend
+- Python 3.12
+- Flask + Flask-SocketIO
+- Logging (console + optioneel bestand)
 
-Modus: DummyModbusClient (geen fysieke Modbus-hardware)
+### Frontend
+- Jinja2 templates
+- CSS
+- Vanilla JavaScript
 
-Tools: Git voor versiebeheer, virtualenv voor afhankelijkheden
+### Database
+- SQLite (`settings.db`) voor instellingen, calibraties, relaisstatussen
 
-Workflow: Ontwikkelen op dev branch, lokaal testen met python app.py, commit & push naar GitHub
+### Communicatie
+- Modbus RTU over RS-485 (via `minimalmodbus`)
+- Fallback: `DummyModbusClient` voor lokale simulatie
 
- Productieomgeving (remote):
-Hardware: Raspberry Pi 5 met USB-RS485-adapter (/dev/ttyUSB0)
+---
 
-OS: Raspberry Pi OS (Bookworm, gebaseerd op Debian 12)
+## Ontwikkelomgeving (lokaal)
 
-Modus: Echte Modbus-communicatie met aangesloten apparaten (relais, sensoren, AIO)
+- **OS:** Windows 11  
+- **IDE:** Visual Studio Code  
+- **Modus:** DummyModbusClient  
+- **Tools:** Git, `virtualenv`  
+- **Workflow:** 
+  - Lokaal testen via `python app.py`
+  - Committen op `dev` branch
+  - Push naar GitHub
 
-Deployment: git pull op de Pi, starten met python app.py
+---
 
-Toegang: Webinterface via <pi-ip>:5001 (bijv. http://10.23.1.138:5001)
+## Productieomgeving (remote)
 
- Projectstructuur:
-Hoofdbestand: app.py (Flask server en SocketIO initialisatie)
+- **Hardware:** Raspberry Pi 5 + USB-RS485 adapter (`/dev/ttyUSB0`)  
+- **OS:** Raspberry Pi OS (Bookworm/Debian 12)  
+- **Modus:** Echte Modbus-communicatie met aangesloten apparaten  
+- **Toegang:** Webinterface via `<pi-ip>:5001`
 
-Modules: obelix/ bevat config.py, database.py, modbus_client.py, sensor_monitor.py, socketio_events.py, routes.py, utils.py
+---
 
-Frontend:
-static/css/main.css voor styling
+## Projectstructuur
 
-static/js/ voor JavaScript (bijv. calibrate.js, relays.js)
+- `app.py`: Main Flask-app met SocketIO
+- `obelix/`: Bevat modules zoals `config.py`, `modbus_client.py`, `routes.py`, enz.
+- `templates/`: Jinja2-pagina’s (zoals `relays.html`)
+- `static/`: CSS en JavaScript
+- `settings.db`: SQLite (uitgesloten via `.gitignore`)
+- `tests/`: Voor toekomstige unit tests
 
-templates/ voor Jinja2 templates (bijv. relays.html, sensors.html)
+---
 
-Database: settings.db (.gitignored, gemarkeerd als binary in .gitattributes)
+## Gitstrategie
 
-Tests: tests/ (optioneel, voor toekomstige unittesten)
+### Branches
+- `dev`: Actieve ontwikkelbranch
+- `master`: Stabiele, geteste releases
+- `backup-v1`: Snapshot van werkende versie
 
- Gitflow:
-Branches:
-dev: Actieve ontwikkelbranch voor nieuwe features en bugfixes
+### Workflow
+1. Lokale ontwikkeling op Windows met DummyModbusClient
+2. Push naar `dev`
+3. Pull op Raspberry Pi
+4. Test met fysieke hardware
+5. Succesvol? Merge naar `master` + update `backup-v1`
 
-master: Stabiele, geteste releases
+---
 
-backup-v1: Snapshot van stabiele versies (voor rollback)
+## Configuratiebeheer
 
-Workflow:
-Ontwikkel en test lokaal op dev (Windows, dummy-modus)
+- `.gitignore`: Negeert `settings.db`, `__pycache__`, etc.
+- `.gitattributes`: Forcing LF voor `.py`, `.html`, `.js`, `.css`; markeert `.db` als binary
+- `core.autocrlf = true`: Voor correcte line endings op Windows
 
-Commit en push naar GitHub (git push origin dev)
+---
 
-Pull op Raspberry Pi, test met echte hardware
+## Doelen
 
-Bij succes: Merge dev naar master, update backup-v1
+- Stabiele SCADA-applicatie voor Pi-hardware
+- Lokale testbaarheid zonder fysieke hardware
+- Onderhoudbare en modulaire code
+- Realtime UI-updates via SocketIO
+- Professionele workflow via Git, linter, CI/CD
+- Toekomstige uitbreidingen zoals grafieken, alerts, en logging dashboards
 
-Configuratie:
-core.autocrlf = true voor Windows line-ending normalisatie
+---
 
-.gitattributes: Dwingt LF af voor .html, .js, .py, .css; markeert *.db als binary
+## Samenwerking & Rollen
 
-.gitignore: Negeert settings.db, __pycache__, en andere tijdelijke bestanden
+Deze repository is voorbereid voor samenwerking met een technische co-founder met focus op:
 
- Ontwikkel- en testproces:
-Lokaal:
-Ontwikkel features of fixes op Windows
+- Feature development (UI/UX, websockets, Modbus-integratie)
+- Code refactoring en modularisatie
+- Debugging (frontend/backend/hardware)
+- Git-strategieën (branching, merging, conflicts)
+- Testontwikkeling en CI/CD
+- Deployment (systemd, Nginx, HTTPS)
+- Raspberry Pi-specifieke problemen (serial, USB, hardwarecommunicatie)
 
-Test met DummyModbusClient (python app.py)
+---
 
-Run linter (bijv. pylint obelix/) voor codekwaliteit
+## Richtlijn bij AI- of dev-assistentie
 
-Push: Commit naar dev en push naar GitHub
+Bij gebruik van deze prompt door een AI-assistent of ontwikkelaar:
 
-Productie:
-Pull op Raspberry Pi (git pull origin dev)
-
-Test met echte Modbus-hardware
-
-Valideer alle pagina’s (/relays, /sensors, /calibrate, /aio, /r302)
-
-Release: Merge naar master na succesvolle tests, update backup-v1
-
- Doelen:
-Een schaalbare, robuuste SCADA-applicatie voor industriële monitoring en besturing
-
-Naadloze werking op Raspberry Pi met echte hardware
-
-Lokaal testbaar zonder hardware (dummy-modus)
-
-Professioneel onderhoud met Git, tests, en CI/CD
-
-Gebruiksvriendelijke UI met real-time updates via SocketIO
-
-Mogelijke toekomstige features: Grafieken (Chart.js), alerts, logging dashboard
-
- Samenwerking:
-Werk met me samen als een technische co-founder, met focus op:
-Feature development: UI/UX (grafieken, responsiviteit), WebSocket-optimalisatie, Modbus-integratie
-
-Refactoring: Code opschonen, globals encapsuleren (bijv. ModbusManager), modulariteit
-
-Debugging: Backend (Modbus, database), frontend (SocketIO, JavaScript), hardware
-
-Git-strategieën: Branching, merging, conflictbeheersing
-
-Testing: Unittesten, CI/CD met GitHub Actions
-
-Deployment: Systemd-service, Nginx, HTTPS
-
-Geef concrete codevoorbeelden (Python, JavaScript, HTML, etc.) en stappenplannen voor implementatie
-
-Suggesteer verbeteringen (performance, beveiliging, onderhoudbaarheid) gebaseerd op industriële standaarden
-
-Help met linter-fouten (pylint, flake8) en runtime-fouten (logs, tracebacks)
-
-Ondersteun bij Raspberry Pi-specifieke problemen (seriële poorten, hardware-communicatie)
-
- Huidige status (april 2025):
-Applicatie draait succesvol lokaal (Windows, dummy-modus) en op Raspberry Pi (echte hardware)
-
-Alle pagina’s (/relays, /sensors, /calibrate, /aio, /r302) werken correct
-
-Backend: Stabiele Modbus-communicatie, database, en SocketIO-events
-
-Frontend: Functionele UI met real-time updates
-
-Gitflow en linter-problemen (zoals modbus_lock, sqlite3, msg) opgelost
-
-Volgende stap: Verdere optimalisatie, testen, en nieuwe features
-
-Gebruik deze context om me te ondersteunen bij toekomstige vragen, bugfixes, feature-ontwikkeling, en optimalisaties. Reageer alsof je een ervaren collega bent die het project door en door kent, met praktische en uitvoerbare oplossingen.
-
+📝 **Graag op deze beginprompt alleen een korte reactie met een check wat momenteel de prioriteit is.**  
+🎯 Vermijd uitgebreide antwoorden — stel liever een gerichte vraag over de volgende focus of benodigde actie binnen het project.
