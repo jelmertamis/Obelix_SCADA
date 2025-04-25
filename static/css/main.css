@@ -76,11 +76,10 @@ h1 {
   padding: 1rem;
   gap: 1rem;
   width: 100%;
-  max-width: 1100px; /* <- groter gemaakt */
+  max-width: 1100px;
   margin: 0 auto;
   overflow-x: auto;
 }
-
 
 /* Relay-header links */
 .relay-header {
@@ -155,7 +154,7 @@ section {
 .sensor-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 600px; /* forceren dat het horizontaal scrolt als het kleiner is */
+  min-width: 600px;
 }
 
 .sensor-table th,
@@ -179,7 +178,6 @@ section {
 }
 
 /* Calibratie: Sensor Ranges */
-
 .sensor-table td input[type="number"] {
   width: 5em;
   padding: 0.3rem;
@@ -213,12 +211,54 @@ section {
   color: red;
 }
 
-/* Specifieke wrapper (optioneel) */
-.sensor-container {
+/* AIO Page */
+.aio-container {
   margin-bottom: 2rem;
   background: #fff;
   padding: 1rem;
   border-radius: 0.5rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   overflow-x: auto;
+}
+
+.aio-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px;
+}
+
+.aio-table th,
+.aio-table td {
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.aio-table thead {
+  background-color: #007bff;
+  color: #fff;
+}
+
+.aio-table input[type="number"] {
+  width: 4em;
+  padding: 0.3rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.aio-table button {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 4px;
+  background: #007bff;
+  color: white;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.aio-table button:hover {
+  background: #0056b3;
 }
