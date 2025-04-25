@@ -77,6 +77,14 @@ def init_db():
         percent REAL NOT NULL
       )
     ''')
+    c.execute('''
+      CREATE TABLE IF NOT EXISTS relay_states (
+        unit_index INTEGER NOT NULL,
+        coil_index INTEGER NOT NULL,
+        state TEXT NOT NULL,
+        PRIMARY KEY(unit_index, coil_index)
+      )
+    ''')
     conn.commit()
     conn.close()
 
@@ -142,6 +150,26 @@ def get_aio_setting(channel):
     conn.close()
     return row[0] if row else None
 
+def save_relay_state(unit_index, coil_index, state):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+      INSERT INTO relay_states(unit_index, coil_index, state) VALUES (?, ?, ?)
+      ON CONFLICT(unit_index, coil_index) DO UPDATE SET state=excluded.state
+    ''', (unit_index, coil_index, state))
+    conn.commit()
+    conn.close()
+
+def get_relay_state(unit_index, coil_index):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+      SELECT state FROM relay_states WHERE unit_index=? AND coil_index=?
+    ''', (unit_index, coil_index))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
 # ─── Dummy Modbus fallback ──────────────────────────────────────────────────
 class DummyModbusClient:
     def __init__(self, *args, **kwargs):
@@ -193,7 +221,7 @@ def sensor_monitor():
                 inst = clients[i]
                 for ch in range(4):
                     try:
-                        with modbus_lock:  
+                        with modbus_lock:
                             raw = inst.read_register(ch, functioncode=4)
                         cal = get_calibration(i, ch)
                         val = raw * cal['scale'] + cal['offset']
@@ -216,6 +244,13 @@ socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 # ─── Relay helper using batch read_bits ────────────────────────────────────
 def read_relay_states(idx):
     inst = clients[idx]
+    if fallback_mode:  # Dummy modus
+        states = []
+        for coil in range(8):
+            saved_state = get_relay_state(idx, coil)
+            # Gebruik opgeslagen staat of False als standaard
+            states.append(saved_state == 'ON' if saved_state else False)
+        return states
     with modbus_lock:
         try:
             bits = inst.read_bits(0, 8, functioncode=1)
@@ -226,7 +261,7 @@ def read_relay_states(idx):
                     bits.append(inst.read_bit(coil, functioncode=1))
                 except:
                     bits.append(False)
-    return bits
+        return bits
 
 # ─── WebSocket: Relays ──────────────────────────────────────────────────────
 @socketio.on('connect', namespace='/relays')
@@ -236,6 +271,16 @@ def ws_relays_connect(auth):
     for i, u in enumerate(UNITS):
         if u['type'] == 'relay':
             states = read_relay_states(i)
+            for coil in range(8):
+                if not fallback_mode:  # Alleen in echte modus valideren
+                    saved_state = get_relay_state(i, coil)
+                    actual_state = states[coil]
+                    state_str = 'ON' if actual_state else 'OFF'
+                    if saved_state is not None and saved_state != state_str:
+                        log(f"⚠️ Relay state mismatch: unit {i}, coil {coil}, saved {saved_state}, actual {state_str}")
+                        save_relay_state(i, coil, state_str)
+                    if saved_state is None:
+                        save_relay_state(i, coil, state_str)
             out.append({
                 'idx':    i,
                 'name':   u['name'],
@@ -245,34 +290,27 @@ def ws_relays_connect(auth):
 
 @socketio.on('toggle_relay', namespace='/relays')
 def ws_toggle_relay(msg):
-    idx   = msg['unit_idx']
-    coil  = msg['coil_idx']
-    want  = msg['state']  # "ON" of "OFF"
+    idx = msg['unit_idx']
+    coil = msg['coil_idx']
+    want = msg['state']  # "ON" of "OFF"
 
-    # 1) Log de binnenkomende request
     log(f"🔄 Relay change requested: unit {idx}, coil {coil} → {want}")
 
-    inst  = clients[idx]
+    inst = clients[idx]
     try:
-        # 2) Schakel de coil
         with modbus_lock:
             if want == 'ON':
                 inst.write_bit(coil, True, functioncode=5)
             else:
                 inst.write_bit(coil, False, functioncode=5)
-
-        # 3) Broadcast naar clients
+        save_relay_state(idx, coil, want)  # Sla staat op
         emit('relay_toggled', {
             'unit_idx': idx,
             'coil_idx': coil,
             'state':    want
         }, namespace='/relays', broadcast=True)
-
-        # 4) Log het succes
         log(f"✅ Relay changed: unit {idx}, coil {coil} is now {want}")
-
     except Exception as e:
-        # 5) Log de fout
         log(f"⚠️ Modbus error toggling unit {idx}, coil {coil}: {e}")
         emit('relay_error', {'error': str(e)}, namespace='/relays')
 
