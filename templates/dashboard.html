@@ -1,4 +1,5 @@
-{% extends "base.html" %}
+<!-- templates/dashboard.html -->
+{% extends 'base.html' %}
 
 {% block title %}Obelix SCADA Dashboard{% endblock %}
 
@@ -10,5 +11,6 @@
     <a href="{{ url_for('calibrate') }}" class="primary-btn">Sensor Ranges</a>
     <a href="{{ url_for('aio') }}"       class="primary-btn">EX04AIO I/O</a>
     <a href="{{ url_for('r302') }}"      class="primary-btn">R302 Reactor</a>
+    <a href="{{ url_for('sensor_history') }}" class="primary-btn">Sensor Historie</a>
   </div>
 {% endblock %}

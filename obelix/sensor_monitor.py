@@ -1,40 +1,69 @@
+# obelix/sensor_monitor.py
 import time
+import threading
+from collections import defaultdict
 from obelix.config import Config
 from obelix.database import get_calibration
+from obelix.sensor_database import save_sensor_reading
 from obelix.modbus_client import get_clients, modbus_lock, modbus_initialized
 from obelix.utils import log
 
+
 def start_sensor_monitor(socketio):
-    modbus_initialized.wait()  # Wacht tot Modbus is geïnitialiseerd
-    log("Sensor_monitor gestart")
+    modbus_initialized.wait()
+    log(f"Sensor_monitor gestart: live interval={Config.LIVE_POLL_INTERVAL}s, storage interval={Config.STORAGE_INTERVAL}s")
+
+    # Buffer voor accumulatie: {(unit_idx, kanaal): [values]}
+    buffer = defaultdict(list)
+    stop_event = threading.Event()
+
+    # Opslag-thread: sla elke STORAGE_INTERVAL de gemiddelde waarden op
+    def storage_worker():
+        while not stop_event.is_set():
+            time.sleep(Config.STORAGE_INTERVAL)
+            for (i, ch), vals in list(buffer.items()):
+                if vals:
+                    avg = sum(vals) / len(vals)
+                    save_sensor_reading(i, ch, None, avg, '')
+            buffer.clear()
+            log("✓ Sensor data opgeslagen (gepoold gemiddelde)")
+
+    threading.Thread(target=storage_worker, daemon=True).start()
+
+    # Live-loop: lees en emit elke LIVE_POLL_INTERVAL
     while True:
+        start = time.time()
         data = []
         clients = get_clients()
         if not clients:
-            log("⚠️ Geen Modbus-clients beschikbaar, sensor ELA_monitor overslaan")
-            time.sleep(1)
-            continue
-        for i, unit in enumerate(Config.UNITS):
-            if unit['type'] == 'analog':
-                if i >= len(clients):
-                    log(f"⚠️ Index {i} buiten bereik van clients (lengte: {len(clients)})")
-                    continue
-                inst = clients[i]
-                for ch in range(4):
-                    try:
-                        with modbus_lock:
-                            raw = inst.read_register(ch, functioncode=4)
-                        cal = get_calibration(i, ch)
-                        val = raw * cal['scale'] + cal['offset']
-                        data.append({
-                            'name': unit['name'],
-                            'slave_id': unit['slave_id'],
-                            'channel': ch,
-                            'raw': raw,
-                            'value': round(val, 2),
-                            'unit': cal.get('unit', '')
-                        })
-                    except Exception as e:
-                        log(f"⚠️ Error reading sensor {unit['name']} channel {ch}: {e}")
+            log("⚠ Geen Modbus-clients beschikbaar, live update overslaan")
+        else:
+            for i, unit in enumerate(Config.UNITS):
+                if unit['type'] == 'analog' and i < len(clients):
+                    inst = clients[i]
+                    for ch in range(4):
+                        try:
+                            with modbus_lock:
+                                raw = inst.read_register(ch, functioncode=4)
+                            cal = get_calibration(i, ch)
+                            val = raw * cal['scale'] + cal['offset']
+                            # Buffer toevoeging voor opslag
+                            buffer[(i, ch)].append(val)
+                            # Voor live UI
+                            data.append({
+                                'name': unit['name'],
+                                'slave_id': unit['slave_id'],
+                                'channel': ch,
+                                'raw': raw,
+                                'value': round(val, 2),
+                                'unit': cal.get('unit', '')
+                            })
+                        except Exception as e:
+                            log(f"⚠ Error reading sensor {unit['name']} ch {ch}: {e}")
+        # Emit live data
         socketio.emit('sensor_update', data, namespace='/sensors')
-        time.sleep(1)
+
+        # Wacht rest van interval
+        elapsed = time.time() - start
+        to_sleep = max(0, Config.LIVE_POLL_INTERVAL - elapsed)
+        time.sleep(to_sleep)

@@ -1,12 +1,19 @@
+# obelix/config.py
 class Config:
     RS485_PORT = '/dev/ttyUSB0'
     BAUDRATE = 9600
-    PARITY = 'E'  # minimalmodbus.serial.PARITY_EVEN
+    PARITY = 'E'
     STOPBITS = 1
     BYTESIZE = 8
     TIMEOUT = 1
+
     DB_FILE = 'settings.db'
+    SENSOR_DB_FILE = 'sensor_data.db'
     TEMPLATES_AUTO_RELOAD = True
+
+    # Polling intervals (in seconden)
+    LIVE_POLL_INTERVAL = 1     # frequentie voor live-websocket updates
+    STORAGE_INTERVAL = 10      # interval voor wegschrijven van gemiddelde waardes
 
     UNITS = [
         {'slave_id': 1, 'name': 'Relay Module 1', 'type': 'relay'},
