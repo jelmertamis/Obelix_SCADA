@@ -1,4 +1,3 @@
-# obelix/sensor_monitor.py
 import time
 import threading
 from collections import defaultdict
@@ -8,16 +7,13 @@ from obelix.sensor_database import save_sensor_reading
 from obelix.modbus_client import get_clients, modbus_lock, modbus_initialized
 from obelix.utils import log
 
-
 def start_sensor_monitor(socketio):
     modbus_initialized.wait()
-    log(f"Sensor_monitor gestart: live interval={Config.LIVE_POLL_INTERVAL}s, storage interval={Config.STORAGE_INTERVAL}s")
+    log(f"Sensor_monitor gestart: live={Config.LIVE_POLL_INTERVAL}s, store={Config.STORAGE_INTERVAL}s")
 
-    # Buffer voor accumulatie: {(unit_idx, kanaal): [values]}
     buffer = defaultdict(list)
     stop_event = threading.Event()
 
-    # Opslag-thread: sla elke STORAGE_INTERVAL de gemiddelde waarden op
     def storage_worker():
         while not stop_event.is_set():
             time.sleep(Config.STORAGE_INTERVAL)
@@ -30,16 +26,15 @@ def start_sensor_monitor(socketio):
 
     threading.Thread(target=storage_worker, daemon=True).start()
 
-    # Live-loop: lees en emit elke LIVE_POLL_INTERVAL
     while True:
         start = time.time()
         data = []
         clients = get_clients()
         if not clients:
-            log("⚠ Geen Modbus-clients beschikbaar, live update overslaan")
+            log("⚠ Geen Modbus-clients, overslaan live-update")
         else:
             for i, unit in enumerate(Config.UNITS):
-                if unit['type'] == 'analog' and i < len(clients):
+                if unit['type']=='analog' and i < len(clients):
                     inst = clients[i]
                     for ch in range(4):
                         try:
@@ -47,23 +42,17 @@ def start_sensor_monitor(socketio):
                                 raw = inst.read_register(ch, functioncode=4)
                             cal = get_calibration(i, ch)
                             val = raw * cal['scale'] + cal['offset']
-                            # Buffer toevoeging voor opslag
                             buffer[(i, ch)].append(val)
-                            # Voor live UI
                             data.append({
                                 'name': unit['name'],
                                 'slave_id': unit['slave_id'],
                                 'channel': ch,
                                 'raw': raw,
                                 'value': round(val, 2),
-                                'unit': cal.get('unit', '')
+                                'unit': cal.get('unit','')
                             })
                         except Exception as e:
-                            log(f"⚠ Error reading sensor {unit['name']} ch {ch}: {e}")
-        # Emit live data
+                            log(f"⚠ Error reading {unit['name']} ch{ch}: {e}")
         socketio.emit('sensor_update', data, namespace='/sensors')
-
-        # Wacht rest van interval
         elapsed = time.time() - start
-        to_sleep = max(0, Config.LIVE_POLL_INTERVAL - elapsed)
-        time.sleep(to_sleep)
+        time.sleep(max(0, Config.LIVE_POLL_INTERVAL - elapsed))
