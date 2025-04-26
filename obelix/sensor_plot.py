@@ -1,45 +1,71 @@
-# obelix/sensor_plot.py (nieuw)
-import sqlite3
-import datetime
-import matplotlib.pyplot as plt
-from obelix.config import Config
-from obelix.sensor_database import get_recent_sensor_readings
+<!-- templates/sensor_plot.html -->
+{% extends 'base.html' %}
 
+{% block title %}Sensor Historie{% endblock %}
 
-def plot_sensor_history(unit_index=None, channel=None, limit=100):
-    """
-    Haal recente sensorleeswaarden op en genereer een tijdreeksplot.
-    - unit_index: filter op specifieke unit (int)
-    - channel: filter op specifiek kanaal (int)
-    - limit: maximaal aantal records om op te halen
-    Returns: matplotlib.Figure
-    """
-    # Ophalen van data
-    all_data = get_recent_sensor_readings(limit)
-    # Filteren
-    filtered = [d for d in all_data
-                if (unit_index is None or d['unit_index'] == unit_index)
-                and (channel is None or d['channel'] == channel)]
-    if not filtered:
-        raise ValueError("Geen sensordata gevonden voor de opgegeven filters")
+{% block content %}
+<section class="sensor-plot">
+  <h1>Sensor Historie</h1>
+  <form id="plotForm" class="plot-form">
+    <label>Unit:
+      <select name="unit_index" id="unit_index">
+        <option value="">Alle units</option>
+        {% for unit in units %}
+        <option value="{{ unit.idx }}">{{ unit.name }} (Slave {{ unit.slave_id }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Kanaal:
+      <select name="channel" id="channel">
+        <option value="">Alle kanalen</option>
+        {% for ch in range(4) %}
+        <option value="{{ ch }}">Kanaal {{ ch }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Vanaf:
+      <input type="datetime-local" name="start" id="start">
+    </label>
+    <label>Tot:
+      <input type="datetime-local" name="end" id="end">
+    </label>
+    <label>Limit:
+      <input type="number" name="limit" id="limit" value="100" min="1">
+    </label>
+    <button type="submit" class="btn">Plot</button>
+  </form>
+  <div id="plotMeta" class="plot-meta"></div>
+  <div id="plotArea" class="plot-area">
+    <img id="sensorPlot" src="" alt="Sensor Plot">
+  </div>
+</section>
+{% endblock %}
 
-    # Omzetten timestamps
-    times = [datetime.datetime.fromisoformat(d['timestamp']) for d in filtered]
-    values = [d['value'] for d in filtered]
+{% block scripts %}
+<script>
+  document.getElementById('plotForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const form = this;
+    const params = new URLSearchParams(new FormData(form));
+    // Voeg alleen start/end toe als ingevuld
+    const start = form.querySelector('#start').value;
+    const end = form.querySelector('#end').value;
+    if (start) params.set('start', start);
+    if (end)   params.set('end', end);
 
-    # Maak plot
-    fig, ax = plt.subplots()
-    ax.plot(times[::-1], values[::-1])  # omkeren zodat oudste links staat
-    ax.set_title(f"Sensorunit {unit_index or 'all'} Kanaal {channel or 'all'} geschiedenis")
-    ax.set_xlabel("Tijd")
-    ax.set_ylabel("Gecalibreerde waarde")
-    fig.autofmt_xdate()
-    return fig
+    document.getElementById('sensorPlot').src = '/plot/sensor?' + params.toString();
 
-
-def save_plot(fig, path):
-    """
-    Sla een matplotlib-plot op naar bestand.
-    """
-    fig.savefig(path, bbox_inches='tight')
-    plt.close(fig)
+    // Toon metadata boven de plot
+    const unitSelect = form.querySelector('#unit_index');
+    const chanSelect = form.querySelector('#channel');
+    const unitText = unitSelect.value
+      ? unitSelect.options[unitSelect.selectedIndex].text
+      : 'Alle units';
+    const chanText = chanSelect.value !== ''
+      ? 'Kanaal ' + chanSelect.value
+      : 'Alle kanalen';
+    const rangeText = (start ? ' vanaf ' + start : '') + (end ? ' tot ' + end : '');
+    document.getElementById('plotMeta').textContent = unitText + ' - ' + chanText + rangeText;
+  });
+</script>
+{% endblock %}
