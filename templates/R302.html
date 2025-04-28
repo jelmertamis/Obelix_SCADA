@@ -3,11 +3,94 @@
 
 {% block title %}R302 Reactor Control{% endblock %}
 
+{% block head %}
+<style>
+  /* Container grid */
+  #relay-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+    justify-items: center;
+  }
+
+  .relay-control {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    background: #fff;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    width: 180px;
+  }
+  .relay-control h3 {
+    font-size: 1rem;
+    margin: 0.5rem 0;
+    text-align: center;
+  }
+
+  .status-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+    font-weight: bold;
+    border-radius: 0.25rem;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    color: #fff;
+    transition: box-shadow 0.3s ease, border 0.3s ease;
+  }
+  .status-manual-on   { background: #28a745; }
+  .status-manual-off  { background: #dc3545; }
+  .status-auto-on,
+  .status-auto-off {
+    border: 3px solid orange;
+    box-shadow: 0 0 6px rgba(255,165,0,0.7);
+  }
+  .status-auto-on  { background: #28a745; }
+  .status-auto-off { background: #dc3545; }
+
+  .mode-popup {
+    display: none;
+    position: absolute;
+    top: 2.5rem;
+    right: 0.5rem;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 0.25rem;
+    padding: 0.25rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    z-index: 10;
+    width: 100%;
+  }
+  .mode-popup.show { display: block; }
+  .mode-popup button {
+    display: block;
+    width: 100%;
+    margin: 0.2rem 0;
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    color: #fff;
+  }
+  .mode-popup .manual-on   { background: #28a745; }
+  .mode-popup .manual-off  { background: #dc3545; }
+  .mode-popup .auto        { background: #ffc107; color: #333; }
+  .mode-popup button:hover { opacity: 0.9; }
+</style>
+{% endblock %}
+
 {% block content %}
 <section>
   <h1>R302 Reactor Control</h1>
 
-  <!-- Sensors -->
+  <h2>Relay Controls</h2>
+  <div id="relay-controls"></div>
+
   <h2>Sensors</h2>
   <table class="sensor-table">
     <thead>
@@ -15,136 +98,113 @@
         <th>Naam</th><th>Ruwe Waarde</th><th>Gecalibreerd</th><th>Eenheid</th>
       </tr>
     </thead>
-    <tbody id="sensorBody">
-      <!-- Wordt door JS gevuld -->
-    </tbody>
+    <tbody id="sensorBody"></tbody>
   </table>
-</section>
-
-<!-- Pumps -->
-<section>
-  <h2>Pumps</h2>
-  <div class="control-group" id="pumps">
-    <!-- JS vult hier pump-cards -->
-  </div>
-</section>
-
-<!-- Compressors -->
-<section>
-  <h2>Compressors ON/OFF</h2>
-  <div class="control-group" id="compressors">
-    <!-- JS vult hier compressor-cards -->
-  </div>
-</section>
-
-<!-- Analog Outputs -->
-<section>
-  <h2>Analog Outputs</h2>
-  <div class="control-group" id="aio-outputs">
-    <!-- JS vult hier AIO-cards -->
-  </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
 <script>
-  // R302 namespace
-  const r302socket = io('/r302');
+  const r302socket   = io('/r302');
+  const sensorSocket = io('/sensors');
+  const relayLabels  = {
+    0:'Influent Pump',1:'Effluent Pump',2:'Nutrient Pump',
+    3:'Compressor (K303)',4:'Compressor (K304)',5:'Heating Valve (A503)'
+  };
+  const sensorLabels = {0:'Level Sensor',1:'pH',2:'Temperature',3:'Dissolved Oxygen'};
+  const relayModes   = {};
 
-  r302socket.on('r302_init', data => {
-    // Pumps (relays 0–2)
-    const pumpDiv = document.getElementById('pumps');
-    pumpDiv.innerHTML = '';
-    Object.entries(data.pumps).forEach(([coil, p]) => {
-      pumpDiv.innerHTML += `
-        <div class="card pump" id="pump-${coil}">
-          <h3>${p.label}</h3>
-          <label>Mode:
-            <select onchange="setPumpMode(${coil}, this.value)">
-              <option${p.mode==='OFF'?' selected':''}>OFF</option>
-              <option${p.mode==='AUTO'?' selected':''}>AUTO</option>
-              <option${p.mode==='ON'?' selected':''}>ON</option>
-            </select>
-          </label>
-        </div>`;
-    });
+  function buildRelayControls(){
+    const c = document.getElementById('relay-controls');
+    c.innerHTML = '';
+    for(let coil=0;coil<=5;coil++){
+      relayModes[coil]='AUTO';
+      c.insertAdjacentHTML('beforeend', `
+        <div class="relay-control" id="relay-${coil}">
+          <h3>${relayLabels[coil]}</h3>
+          <button class="status-btn status-auto-off" id="status-${coil}">Loading…</button>
+          <div class="mode-popup" id="popup-${coil}">
+            <button class="manual-on"  data-coil="${coil}">Manual ON</button>
+            <button class="manual-off" data-coil="${coil}">Manual OFF</button>
+            <button class="auto"       data-coil="${coil}">AUTO</button>
+          </div>
+        </div>`);
+    }
+  }
 
-    // Compressors ON/OFF + speed (relays 3–4 + AIO indices)
-    const compDiv = document.getElementById('compressors');
-    compDiv.innerHTML = '';
-    Object.entries(data.compressors).forEach(([coil, c]) => {
-      compDiv.innerHTML += `
-        <div class="card compressor" id="comp-${coil}">
-          <h3>${c.label}</h3>
-          <label>Mode:
-            <select onchange="setCompMode(${coil}, this.value)">
-              <option${c.mode==='OFF'?' selected':''}>OFF</option>
-              <option${c.mode==='AUTO'?' selected':''}>AUTO</option>
-              <option${c.mode==='ON'?' selected':''}>ON</option>
-            </select>
-          </label>
-          <label>Speed (%):
-            <input type="number" step="0.1" min="0" max="100"
-                   value="${c.freq}"
-                   onchange="setCompFreq(${coil}, this.value)">
-          </label>
-        </div>`;
-    });
+  function updateRelayStatus(coil, physOn, mode){
+    const btn = document.getElementById(`status-${coil}`);
+    btn.className='status-btn';
+    relayModes[coil]=mode;
+    if(mode==='MANUAL_ON'){
+      btn.textContent='Manual ON'; btn.classList.add('status-manual-on');
+    } else if(mode==='MANUAL_OFF'){
+      btn.textContent='Manual OFF';btn.classList.add('status-manual-off');
+    } else {
+      btn.textContent= physOn?'Auto ON':'Auto OFF';
+      btn.classList.add( physOn?'status-auto-on':'status-auto-off' );
+    }
+  }
 
-    // Analog outputs (slave 10 channels)
-    const aioDiv = document.getElementById('aio-outputs');
-    aioDiv.innerHTML = '';
-    data.aio.forEach(a => {
-      aioDiv.innerHTML += `
-        <div class="card aio" id="aio-${a.channel}">
-          <h3>${a.label}</h3>
-          <label>Percent Out:
-            <input type="number" step="0.1" min="0" max="100"
-                   value="${a.percent_out ?? ''}"
-                   onchange="setAio(${a.channel}, this.value)">
-          </label>
-        </div>`;
-    });
+  function hideAllPopups(){
+    document.querySelectorAll('.mode-popup.show')
+      .forEach(p=>p.classList.remove('show'));
+  }
+
+  buildRelayControls();
+
+  // Delegate clicks on the relay-controls container
+  document.getElementById('relay-controls').addEventListener('click', e=>{
+    // 1) status-btn clicked → toggle its popup, stopPropagation
+    if(e.target.classList.contains('status-btn')){
+      e.stopPropagation();
+      const coil = e.target.id.split('-')[1];
+      const pop  = document.getElementById(`popup-${coil}`);
+      const was  = pop.classList.contains('show');
+      hideAllPopups();
+      if(!was) pop.classList.add('show');
+      return;
+    }
+    // 2) popup-button clicked → set mode, stopPropagation
+    const btn = e.target.closest('.mode-popup button');
+    if(btn){
+      e.stopPropagation();
+      const coil = Number(btn.dataset.coil);
+      let mode = 'AUTO';
+      if(btn.classList.contains('manual-on'))   mode='MANUAL_ON';
+      else if(btn.classList.contains('manual-off')) mode='MANUAL_OFF';
+      r302socket.emit('set_mode',{coil,mode});
+      updateRelayStatus(coil,mode!=='MANUAL_OFF',mode);
+      hideAllPopups();
+    }
   });
 
-  // Helper emits
-  function setPumpMode(coil, mode) {
-    r302socket.emit('set_pump_mode', { pump: coil, mode });
-  }
-  function setCompMode(coil, mode) {
-    r302socket.emit('set_compressor_mode', { compressor: coil, mode });
-  }
-  function setCompFreq(coil, freq) {
-    r302socket.emit('set_compressor_freq', { compressor: coil, freq });
-  }
-  function setAio(ch, pct) {
-    r302socket.emit('aio_set', { channel: ch, percent: pct });
-  }
+  // clicking elsewhere closes popups
+  document.addEventListener('click', hideAllPopups);
 
-  // Separate socket for sensor updates
-  const sensorSocket = io('/sensors');
-  // Map channel → label for R302 sensors
-  const sensorLabels = {
-    0: 'Level Sensor',
-    1: 'pH',
-    2: 'Temperature',
-    3: 'Dissolved Oxygen'
-  };
+  // server → init/update
+  r302socket.on('r302_init', status=>{
+    Object.entries(status).forEach(([coil,info])=>
+      updateRelayStatus(coil,info.physical,info.mode)
+    );
+  });
+  r302socket.on('r302_update', status=>{
+    Object.entries(status).forEach(([coil,info])=>
+      updateRelayStatus(coil,info.physical,info.mode)
+    );
+  });
 
-  sensorSocket.on('sensor_update', readings => {
-    // Filter op slave ID 5 (jouw R302 sensoren)
-    const r302Readings = readings.filter(r => r.slave_id === 5);
-    const tbody = document.getElementById('sensorBody');
-    tbody.innerHTML = '';
-    r302Readings.forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${sensorLabels[r.channel] || 'Kanaal ' + r.channel}</td>
+  // sensor updates
+  sensorSocket.on('sensor_update', readings=>{
+    const tbody = document.getElementById('sensorBody'); tbody.innerHTML='';
+    readings.filter(r=>r.slave_id===5).forEach(r=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>${sensorLabels[r.channel]}</td>
         <td>${r.raw}</td>
         <td>${r.value.toFixed(2)}</td>
-        <td>${r.unit || ''}</td>
-      `;
+        <td>${r.unit||''}</td>`;
       tbody.appendChild(tr);
     });
   });
