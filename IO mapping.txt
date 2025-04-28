@@ -1,0 +1,21 @@
+Relays
+Slave ID 1:
+Coil:
+0: influent pump
+1: effluent pump
+2: nutrient pump
+3: Compressor on/off (K303)
+4: Compressor on/off (K304)
+5: Heating valve (A503)
+
+Sensors
+Slave ID 5:
+0: level sensor
+1: pH 
+2: temperature
+3: dissolved oxygen
+
+Analog output
+Slave ID 10:
+0: Compressor speed (K303)
+1: Compressor speed (K304)

@@ -1,122 +1,152 @@
 <!-- templates/R302.html -->
 {% extends 'base.html' %}
 
-{% block title %}R302 Reactorbesturing{% endblock %}
+{% block title %}R302 Reactor Control{% endblock %}
 
 {% block content %}
-  <h1>R302 Reactorbesturing</h1>
+<section>
+  <h1>R302 Reactor Control</h1>
 
   <!-- Sensors -->
-  <section>
-    <h2>Sensors</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th><th>Raw</th><th>Value</th>
-        </tr>
-      </thead>
-      <tbody id="sensorBody"></tbody>
-    </table>
-  </section>
+  <h2>Sensors</h2>
+  <table class="sensor-table">
+    <thead>
+      <tr>
+        <th>Naam</th><th>Ruwe Waarde</th><th>Gecalibreerd</th><th>Eenheid</th>
+      </tr>
+    </thead>
+    <tbody id="sensorBody">
+      <!-- Wordt door JS gevuld -->
+    </tbody>
+  </table>
+</section>
 
-  <!-- Pumps -->
-  <section>
-    <h2>Pumps</h2>
-    <div class="control-group">
-      <div class="card" id="pump-influent">
-        <h3>Influent Pump</h3>
-        <label for="mode-influent">Mode</label>
-        <select id="mode-influent" onchange="setPumpMode('influent', this.value)">
-          <option>OFF</option><option>AUTO</option><option>ON</option>
-        </select>
-      </div>
-      <div class="card" id="pump-nutrient">
-        <h3>Nutrient Pump</h3>
-        <label for="mode-nutrient">Mode</label>
-        <select id="mode-nutrient" onchange="setPumpMode('nutrient', this.value)">
-          <option>OFF</option><option>AUTO</option><option>ON</option>
-        </select>
-      </div>
-      <div class="card" id="pump-effluent">
-        <h3>Effluent Pump</h3>
-        <label for="mode-effluent">Mode</label>
-        <select id="mode-effluent" onchange="setPumpMode('effluent', this.value)">
-          <option>OFF</option><option>AUTO</option><option>ON</option>
-        </select>
-      </div>
-    </div>
-  </section>
+<!-- Pumps -->
+<section>
+  <h2>Pumps</h2>
+  <div class="control-group" id="pumps">
+    <!-- JS vult hier pump-cards -->
+  </div>
+</section>
 
-  <!-- Compressors -->
-  <section>
-    <h2>Compressors</h2>
-    <div class="control-group">
-      <div class="card" id="compressor1">
-        <h3>Compressor 1</h3>
-        <label for="comp1-mode">Mode</label>
-        <select id="comp1-mode" onchange="setCompMode(1, this.value)">
-          <option>OFF</option><option>AUTO</option><option>ON</option>
-        </select>
-        <label for="comp1-freq">Frequency (%)</label>
-        <input type="number" id="comp1-freq" step="0.1" min="0" max="100"
-               onchange="setCompFreq(1, this.value)">
-      </div>
-      <div class="card" id="compressor2">
-        <h3>Compressor 2</h3>
-        <label for="comp2-mode">Mode</label>
-        <select id="comp2-mode" onchange="setCompMode(2, this.value)">
-          <option>OFF</option><option>AUTO</option><option>ON</option>
-        </select>
-        <label for="comp2-freq">Frequency (%)</label>
-        <input type="number" id="comp2-freq" step="0.1" min="0" max="100"
-               onchange="setCompFreq(2, this.value)">
-      </div>
-    </div>
-  </section>
+<!-- Compressors -->
+<section>
+  <h2>Compressors ON/OFF</h2>
+  <div class="control-group" id="compressors">
+    <!-- JS vult hier compressor-cards -->
+  </div>
+</section>
 
-  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    const socket = io('/r302');
+<!-- Analog Outputs -->
+<section>
+  <h2>Analog Outputs</h2>
+  <div class="control-group" id="aio-outputs">
+    <!-- JS vult hier AIO-cards -->
+  </div>
+</section>
+{% endblock %}
 
-    socket.on('r302_init', data => {
-      // sensors
-      const sb = document.getElementById('sensorBody');
-      sb.innerHTML = '';
-      data.sensors.forEach((s,i) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i+1}</td><td>${s.raw||'—'}</td><td>${s.value||'—'}</td>`;
-        sb.appendChild(tr);
-      });
-      // pumps
-      ['influent','nutrient','effluent'].forEach(k=>{
-        document.getElementById(`mode-${k}`).value = data.pumps[k];
-      });
-      // compressors
-      [1,2].forEach(n=>{
-        const c = data.compressors[n];
-        document.getElementById(`comp${n}-mode`).value = c.mode;
-        document.getElementById(`comp${n}-freq`).value = c.freq;
-      });
+{% block scripts %}
+<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+<script>
+  // R302 namespace
+  const r302socket = io('/r302');
+
+  r302socket.on('r302_init', data => {
+    // Pumps (relays 0–2)
+    const pumpDiv = document.getElementById('pumps');
+    pumpDiv.innerHTML = '';
+    Object.entries(data.pumps).forEach(([coil, p]) => {
+      pumpDiv.innerHTML += `
+        <div class="card pump" id="pump-${coil}">
+          <h3>${p.label}</h3>
+          <label>Mode:
+            <select onchange="setPumpMode(${coil}, this.value)">
+              <option${p.mode==='OFF'?' selected':''}>OFF</option>
+              <option${p.mode==='AUTO'?' selected':''}>AUTO</option>
+              <option${p.mode==='ON'?' selected':''}>ON</option>
+            </select>
+          </label>
+        </div>`;
     });
 
-    socket.on('pump_mode_updated', m=> {
-      document.getElementById(`mode-${m.pump}`).value = m.mode;
-    });
-    socket.on('compressor_mode_updated', m=>{
-      document.getElementById(`comp${m.compressor}-mode`).value = m.mode;
-    });
-    socket.on('compressor_freq_updated', m=>{
-      document.getElementById(`comp${m.compressor}-freq`).value = m.freq;
+    // Compressors ON/OFF + speed (relays 3–4 + AIO indices)
+    const compDiv = document.getElementById('compressors');
+    compDiv.innerHTML = '';
+    Object.entries(data.compressors).forEach(([coil, c]) => {
+      compDiv.innerHTML += `
+        <div class="card compressor" id="comp-${coil}">
+          <h3>${c.label}</h3>
+          <label>Mode:
+            <select onchange="setCompMode(${coil}, this.value)">
+              <option${c.mode==='OFF'?' selected':''}>OFF</option>
+              <option${c.mode==='AUTO'?' selected':''}>AUTO</option>
+              <option${c.mode==='ON'?' selected':''}>ON</option>
+            </select>
+          </label>
+          <label>Speed (%):
+            <input type="number" step="0.1" min="0" max="100"
+                   value="${c.freq}"
+                   onchange="setCompFreq(${coil}, this.value)">
+          </label>
+        </div>`;
     });
 
-    function setPumpMode(pump,mode){
-      socket.emit('set_pump_mode',{pump,mode});
-    }
-    function setCompMode(n,mode){
-      socket.emit('set_compressor_mode',{compressor:n,mode});
-    }
-    function setCompFreq(n,freq){
-      socket.emit('set_compressor_freq',{compressor:n,freq});
-    }
-  </script>
+    // Analog outputs (slave 10 channels)
+    const aioDiv = document.getElementById('aio-outputs');
+    aioDiv.innerHTML = '';
+    data.aio.forEach(a => {
+      aioDiv.innerHTML += `
+        <div class="card aio" id="aio-${a.channel}">
+          <h3>${a.label}</h3>
+          <label>Percent Out:
+            <input type="number" step="0.1" min="0" max="100"
+                   value="${a.percent_out ?? ''}"
+                   onchange="setAio(${a.channel}, this.value)">
+          </label>
+        </div>`;
+    });
+  });
+
+  // Helper emits
+  function setPumpMode(coil, mode) {
+    r302socket.emit('set_pump_mode', { pump: coil, mode });
+  }
+  function setCompMode(coil, mode) {
+    r302socket.emit('set_compressor_mode', { compressor: coil, mode });
+  }
+  function setCompFreq(coil, freq) {
+    r302socket.emit('set_compressor_freq', { compressor: coil, freq });
+  }
+  function setAio(ch, pct) {
+    r302socket.emit('aio_set', { channel: ch, percent: pct });
+  }
+
+  // Separate socket for sensor updates
+  const sensorSocket = io('/sensors');
+  // Map channel → label for R302 sensors
+  const sensorLabels = {
+    0: 'Level Sensor',
+    1: 'pH',
+    2: 'Temperature',
+    3: 'Dissolved Oxygen'
+  };
+
+  sensorSocket.on('sensor_update', readings => {
+    // Filter op slave ID 5 (jouw R302 sensoren)
+    const r302Readings = readings.filter(r => r.slave_id === 5);
+    const tbody = document.getElementById('sensorBody');
+    tbody.innerHTML = '';
+    r302Readings.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${sensorLabels[r.channel] || 'Kanaal ' + r.channel}</td>
+        <td>${r.raw}</td>
+        <td>${r.value.toFixed(2)}</td>
+        <td>${r.unit || ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  });
+</script>
 {% endblock %}
