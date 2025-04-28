@@ -152,6 +152,11 @@
     color: #666;
   }
   
+  .onoff-button.auto {
+    border: 3px solid orange;
+    box-shadow: 0 0 6px rgba(255,165,0,0.7);
+  }
+
   /* ===============================
      📊 Sensor View
      =============================== */

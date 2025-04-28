@@ -1,124 +1,59 @@
-# Obelix_SCADA: Projectbeschrijving & Samenwerkingsrichtlijn
+Obelix_SCADA: Projectbeschrijving & Samenwerkingsrichtlijn (v1.2)
+Versie: 1.2
+Laatste update: 28 april 2025
 
-**Versie:** 1.1 
-**Laatste update:** 25 april 2025
+Overzicht
+Obelix_SCADA is een professionele, modulaire SCADA-oplossing voor real-time monitoring en besturing van industriële systemen. Kan lokaal draaien met DummyModbus of op een Raspberry Pi 5 met echte RS-485 hardware.
 
-## Overzicht
+Technologie-stack
+• Backend: Python 3.12, Flask, Flask-SocketIO, minimalmodbus
+• Frontend: Jinja2-templates, CSS, Vanilla JavaScript
+• Database: SQLite (settings.db voor instellingen/calibratie/relay_states; sensor_data.db voor historische data)
+• Communicatie: Modbus RTU over RS-485 of DummyModbusClient
 
-**Obelix_SCADA** is een professioneel SCADA-project gericht op real-time monitoring en besturing van industriële systemen.
+Ontwikkel- en productieomgeving
+• Lokaal: Windows 11, VS Code, virtualenv, python app.py
+• Productie: Raspberry Pi 5 (Bookworm/Debian 12), USB-RS485 adapter, webinterface op poort 5001
 
-- **GitHub-repository:** https://github.com/jelmertamis/Obelix_SCADA  
-- **Doel:** Een schaalbare, robuuste SCADA-oplossing voor Raspberry Pi, met volledige ondersteuning voor lokale ontwikkeling zonder fysieke hardware.
+Projectstructuur
+app.py
+obelix/
+ config.py
+ database.py
+ modbus_client.py
+ routes.py
+ socketio_events.py
+ r302_manager.py
+ sensor_monitor.py
+templates/
+ base.html
+ dashboard.html
+ relays.html
+ R302.html
+static/
+ css/main.css
+ js/relays.js
+settings.db (gitignored)
+sensor_data.db (gitignored)
 
----
+Git-strategie
+Branches: dev (actief), master (stable), backup-v1
+Workflow:
 
-## Technologie-stack
+Ontwikkel en test lokaal in dev (DummyModbus)
 
-### Backend
-- Python 3.12
-- Flask + Flask-SocketIO
-- Logging (console + optioneel bestand)
+Push naar GitHub, pull op Pi, test met hardware
 
-### Frontend
-- Jinja2 templates
-- CSS
-- Vanilla JavaScript
+Merge naar master en update backup-v1 na succesvolle validatie
 
-### Database
-- SQLite (`settings.db`) voor instellingen, calibraties, relaisstatussen
+Samenwerkingsrichtlijn AI-assistentie
 
-### Communicatie
-- Modbus RTU over RS-485 (via `minimalmodbus`)
-- Fallback: `DummyModbusClient` voor lokale simulatie
+Vraag altijd eerst: “Wat is nu de hoogste prioriteit binnen het project?”
 
----
+Lever bij code-voorbeelden altijd volledige bestanden (HTML, JS, Python), niet in canvas of fragmenten.
 
-## Ontwikkelomgeving (lokaal)
+Houd antwoorden kort en zakelijk; sluit af met één gerichte vervolgvraag.
 
-- **OS:** Windows 11  
-- **IDE:** Visual Studio Code  
-- **Modus:** DummyModbusClient  
-- **Tools:** Git, `virtualenv`  
-- **Workflow:** 
-  - Lokaal testen via `python app.py`
-  - Committen op `dev` branch
-  - Push naar GitHub
+Volg de workflow: wijzig in dev, test lokaal, merge naar master na verificatie
 
----
-
-## Productieomgeving (remote)
-
-- **Hardware:** Raspberry Pi 5 + USB-RS485 adapter (`/dev/ttyUSB0`)  
-- **OS:** Raspberry Pi OS (Bookworm/Debian 12)  
-- **Modus:** Echte Modbus-communicatie met aangesloten apparaten  
-- **Toegang:** Webinterface via `<pi-ip>:5001`
-
----
-
-## Projectstructuur
-
-- `app.py`: Main Flask-app met SocketIO
-- `obelix/`: Bevat modules zoals `config.py`, `modbus_client.py`, `routes.py`, enz.
-- `templates/`: Jinja2-pagina’s (zoals `relays.html`)
-- `static/`: CSS en JavaScript
-- `settings.db`: SQLite (uitgesloten via `.gitignore`)
-- `tests/`: Voor toekomstige unit tests
-
----
-
-## Gitstrategie
-
-### Branches
-- `dev`: Actieve ontwikkelbranch
-- `master`: Stabiele, geteste releases
-- `backup-v1`: Snapshot van werkende versie
-
-### Workflow
-1. Lokale ontwikkeling op Windows met DummyModbusClient
-2. Push naar `dev`
-3. Pull op Raspberry Pi
-4. Test met fysieke hardware
-5. Succesvol? Merge naar `master` + update `backup-v1`
-
----
-
-## Configuratiebeheer
-
-- `.gitignore`: Negeert `settings.db`, `__pycache__`, etc.
-- `.gitattributes`: Forcing LF voor `.py`, `.html`, `.js`, `.css`; markeert `.db` als binary
-- `core.autocrlf = true`: Voor correcte line endings op Windows
-
----
-
-## Doelen
-
-- Stabiele SCADA-applicatie voor Pi-hardware
-- Lokale testbaarheid zonder fysieke hardware
-- Onderhoudbare en modulaire code
-- Realtime UI-updates via SocketIO
-- Professionele workflow via Git, linter, CI/CD
-- Toekomstige uitbreidingen zoals grafieken, alerts, en logging dashboards
-
----
-
-## Samenwerking & Rollen
-
-Deze repository is voorbereid voor samenwerking met een technische co-founder met focus op:
-
-- Feature development (UI/UX, websockets, Modbus-integratie)
-- Code refactoring en modularisatie
-- Debugging (frontend/backend/hardware)
-- Git-strategieën (branching, merging, conflicts)
-- Testontwikkeling en CI/CD
-- Deployment (systemd, Nginx, HTTPS)
-- Raspberry Pi-specifieke problemen (serial, USB, hardwarecommunicatie)
-
----
-
-## Richtlijn bij AI- of dev-assistentie
-
-Bij gebruik van deze prompt door een AI-assistent of ontwikkelaar:
-
-📝 **Graag op deze beginprompt alleen een korte reactie met een check wat momenteel de prioriteit is.**  
-🎯 Vermijd uitgebreide antwoorden — stel liever een gerichte vraag over de volgende focus of benodigde actie binnen het project.
-! graag een code aanpassen per prompt en graag de complete code geven :-)
+Codebase volgt direct.

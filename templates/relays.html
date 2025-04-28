@@ -1,5 +1,73 @@
 {% extends "base.html" %}
 
+{% block head %}
+  {{ super() }}
+  <style>
+    /* Zorg dat de kaart overflow-visible is zodat de globale popup eroverheen hangt */
+    .relay-module {
+      overflow: visible !important;
+      padding: 1.25rem;
+    }
+    /* Horizontale scroll voor de knoppenrij, popup mag er vertical uitsteken */
+    .relay-buttons {
+      overflow-x: auto;
+      overflow-y: visible;
+      white-space: nowrap;
+      padding-right: 4rem; /* extra ruimte voor popup-positie */
+    }
+    .relay-button-wrapper {
+      display: inline-block;
+      margin: .25rem;
+    }
+
+    /* Globale popup voor mode-selectie */
+    #mode-popup {
+      position: absolute;
+      display: none;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: .25rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 1000;
+      text-align: center;
+    }
+    #mode-popup button {
+      display: block;
+      width: 100%;
+      padding: .3rem 0;
+      margin: .1rem 0;
+      font-size: .85rem;
+      border: none;
+      border-radius: .2rem;
+      cursor: pointer;
+      color: #fff;
+    }
+    #mode-popup .manual-on   { background: #28a745; }
+    #mode-popup .manual-off  { background: #dc3545; }
+    #mode-popup .auto        { background: #ffc107; color: #333; }
+    #mode-popup button:hover { opacity: .9; }
+
+    /* Zorg dat <br> in button wordt gerenderd */
+    .onoff-button {
+      white-space: pre-line;
+    }
+
+    /* Auto-mode styling: groen of rood met oranje rand */
+    .onoff-button.auto-on {
+      background-color: #28a745 !important;
+      color: #fff !important;
+      border: 3px solid orange;
+      box-shadow: 0 0 6px rgba(255,165,0,0.7);
+    }
+    .onoff-button.auto-off {
+      background-color: #dc3545 !important;
+      color: #fff !important;
+      border: 3px solid orange;
+      box-shadow: 0 0 6px rgba(255,165,0,0.7);
+    }
+  </style>
+{% endblock %}
+
 {% block title %}Relays{% endblock %}
 
 {% block content %}
@@ -12,19 +80,32 @@
       </div>
       <div class="relay-buttons">
         {% for coil_idx in range(unit.coil_count) %}
-          <button
-            class="onoff-button loading"
+          <div
+            class="relay-button-wrapper"
             data-unit-idx="{{ unit.idx }}"
             data-coil-idx="{{ coil_idx }}"
-          >...</button>
+          >
+            <button
+              class="onoff-button loading"
+              data-unit-idx="{{ unit.idx }}"
+              data-coil-idx="{{ coil_idx }}"
+            >…</button>
+          </div>
         {% endfor %}
       </div>
     </div>
   {% endfor %}
 </section>
+
+<!-- Globale popup voor MANUAL/AUTO selectie -->
+<div id="mode-popup">
+  <button class="manual-on">Manual<br>ON</button>
+  <button class="manual-off">Manual<br>OFF</button>
+  <button class="auto">AUTO</button>
+</div>
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script src="{{ url_for('static', filename='js/relays.js') }}"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/relays.js') }}"></script>
 {% endblock %}
