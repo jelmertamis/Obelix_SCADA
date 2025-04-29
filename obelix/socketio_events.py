@@ -13,8 +13,8 @@ from obelix.modbus_client import (
 )
 from obelix.utils import log
 from obelix.r302_manager import R302Controller
+from obelix import auto_control
 
-# Instantiate the R302 controller, which persists mode in settings.db
 r302_ctrl = R302Controller(unit_index=0)
 
 def init_socketio(socketio):
@@ -29,7 +29,6 @@ def init_socketio(socketio):
                 try:
                     states = read_relay_states(i)
                     log(f"Relaisstatussen voor unit {i} ({unit['name']}): {states}")
-                    # Update persistent relay_states
                     for coil in range(len(states)):
                         if not fallback_mode:
                             saved = get_relay_state(i, coil)
@@ -37,13 +36,11 @@ def init_socketio(socketio):
                             state_str = 'ON' if actual else 'OFF'
                             if saved is None or saved != state_str:
                                 save_relay_state(i, coil, state_str)
-                    # Build the payload item
                     item = {
                         'idx':    i,
                         'name':   unit['name'],
                         'states': states
                     }
-                    # If this is the R302 unit, also include the modes
                     if i == r302_ctrl.unit:
                         item['modes'] = [
                             r302_ctrl.get_mode(coil)
@@ -176,12 +173,40 @@ def init_socketio(socketio):
     @socketio.on('connect', namespace='/r302')
     def ws_r302_connect(auth):
         log("SocketIO: /r302 connected")
-        # send all relay modes + physical states
         emit('r302_init', r302_ctrl.get_status(), namespace='/r302')
 
     @socketio.on('set_mode', namespace='/r302')
     def ws_set_mode(msg):
         coil, mode = msg['coil'], msg['mode']
         r302_ctrl.set_mode(coil, mode)
-        # broadcast updated status to all clients
         emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
+
+    # ----- SBR namespace -----
+    @socketio.on('connect', namespace='/sbr')
+    def ws_sbr_connect(auth):
+        log("▶ SocketIO: /sbr connected")
+        ctrl = auto_control.sbr_controller
+        if not ctrl:
+            emit('sbr_error', {'error': 'SBR controller not initialized'}, namespace='/sbr')
+            return
+        active = ctrl.start_event.is_set()
+        emit('sbr_status', {'active': active}, namespace='/sbr')
+        emit('sbr_timer', {'timer': ctrl.timer}, namespace='/sbr')
+
+    @socketio.on('sbr_control', namespace='/sbr')
+    def ws_sbr_control(msg):
+        log(f"▶ Received sbr_control: {msg}")
+        ctrl = auto_control.sbr_controller
+        if not ctrl:
+            emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
+            return
+        action = msg.get('action')
+        if action == 'toggle':
+            if ctrl.start_event.is_set():
+                ctrl.stop()
+            else:
+                ctrl.start()
+        elif action == 'reset':
+            ctrl.reset()
+        else:
+            emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')

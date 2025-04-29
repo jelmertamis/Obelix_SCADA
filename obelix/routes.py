@@ -91,5 +91,10 @@ def init_routes(app):
             units=analog_units,
             plot_url=url_for('plot.sensor_plot_png')
         )
-
+    
+    @app.route('/sbr')  
+    def sbr():
+        cycle_active = get_setting('sbr_cycle_active', '0') == '1'
+        return render_template('sbr.html', cycle_active=cycle_active)
+    
     app.register_blueprint(plot_bp)

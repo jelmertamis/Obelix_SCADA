@@ -1,0 +1,78 @@
+<!-- templates/sbr.html -->
+{% extends 'base.html' %}
+{% block title %}SBR Configuratie & Status{% endblock %}
+{% block content %}
+<section class="sbr-config">
+  <h1>SBR Configuratie & Status</h1>
+  <div class="sbr-buttons" style="margin-bottom:1rem; text-align:center;">
+    <button type="button" id="btn-toggle" class="primary-btn">
+      {% if cycle_active %}Stop Cycle{% else %}Start Cycle{% endif %}
+    </button>
+    <button type="button" id="btn-reset" class="primary-btn">Reset Cycle</button>
+  </div>
+  <div class="sbr-status-indicator" style="margin-bottom:1rem; text-align:center;">
+    <button id="status-indicator" class="status-btn" disabled>
+      Cycle: {% if cycle_active %}ACTIVE{% else %}INACTIVE{% endif %}
+    </button>
+  </div>
+  <div class="sbr-timer" style="margin-bottom:1rem; text-align:center;">
+    <span id="timer-display">Timer: 0 s</span>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <style>
+    .status-btn {
+      padding: 10px 20px;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 5px;
+      cursor: default;
+    }
+    .status-active { background-color: #28a745; color: white; }
+    .status-inactive { background-color: #dc3545; color: white; }
+    .sbr-timer {
+      font-size: 16px;
+      font-weight: bold;
+    }
+  </style>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+  <script>
+    const socket = io('/sbr');
+    const btnToggle = document.getElementById('btn-toggle');
+    const btnReset = document.getElementById('btn-reset');
+    const statusIndicator = document.getElementById('status-indicator');
+    const timerDisplay = document.getElementById('timer-display');
+
+    socket.on('connect', () => {
+      console.log('Connected to /sbr namespace');
+    });
+
+    socket.on('sbr_status', status => {
+      console.log('Received sbr_status:', status);
+      btnToggle.textContent = status.active ? 'Stop Cycle' : 'Start Cycle';
+      statusIndicator.textContent = `Cycle: ${status.active ? 'ACTIVE' : 'INACTIVE'}`;
+      statusIndicator.className = `status-btn ${status.active ? 'status-active' : 'status-inactive'}`;
+    });
+
+    socket.on('sbr_timer', data => {
+      console.log('Received sbr_timer:', data);
+      timerDisplay.textContent = `Timer: ${data.timer} s`;
+    });
+
+    socket.on('sbr_error', err => {
+      console.error('SBR error:', err.error);
+      alert('Fout: ' + err.error);
+    });
+
+    btnToggle.addEventListener('click', () => {
+      socket.emit('sbr_control', { action: 'toggle' });
+    });
+
+    btnReset.addEventListener('click', () => {
+      socket.emit('sbr_control', { action: 'reset' });
+    });
+  </script>
+{% endblock %}
