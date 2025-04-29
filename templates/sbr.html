@@ -15,6 +15,12 @@
     <span id="influent-display"></span>
     &nbsp;&nbsp;
     <label>
+      React 1 (min):
+      <input type="number" id="react-input" step="0.1" min="0.1">
+    </label>
+    <span id="react-display"></span>
+    &nbsp;&nbsp;
+    <label>
       Effluent (min):
       <input type="number" id="effluent-input" step="0.1" min="0.1">
     </label>
@@ -66,27 +72,31 @@
 
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    const socket        = io('/sbr');
-    const inflInput     = document.getElementById('influent-input');
-    const efflInput     = document.getElementById('effluent-input');
-    const inflDisp      = document.getElementById('influent-display');
-    const efflDisp      = document.getElementById('effluent-display');
-    const btnSet        = document.getElementById('btn-set-phases');
-    const btnToggle     = document.getElementById('btn-toggle');
-    const btnReset      = document.getElementById('btn-reset');
-    const statusBtn     = document.getElementById('status-indicator');
-    const timerDisp     = document.getElementById('timer-display');
-    const phaseNameEl   = document.getElementById('phase-name');
-    const phaseTimerEl  = document.getElementById('phase-timer');
+    const socket         = io('/sbr');
+    const inflInput      = document.getElementById('influent-input');
+    const reactInput     = document.getElementById('react-input');
+    const efflInput      = document.getElementById('effluent-input');
+    const inflDisp       = document.getElementById('influent-display');
+    const reactDisp      = document.getElementById('react-display');
+    const efflDisp       = document.getElementById('effluent-display');
+    const btnSet         = document.getElementById('btn-set-phases');
+    const btnToggle      = document.getElementById('btn-toggle');
+    const btnReset       = document.getElementById('btn-reset');
+    const statusBtn      = document.getElementById('status-indicator');
+    const timerDisp      = document.getElementById('timer-display');
+    const phaseNameEl    = document.getElementById('phase-name');
+    const phaseTimerEl   = document.getElementById('phase-timer');
 
-    // Houd fasetijden lokaal bij om redraw door server-events te overstemmen
-    const phaseDurations = { influent: 0, effluent: 0 };
+    // Bewaar fasetijden lokaal
+    const phaseDurations = { influent: 0, react: 0, effluent: 0 };
     let currentPhase = null, currentElapsed = 0;
 
+    // Na connect direct de tijden opvragen
     socket.on('connect', () => {
       socket.emit('sbr_get_phase_times');
     });
 
+    // Status
     socket.on('sbr_status', data => {
       const active = data.active;
       btnToggle.textContent = active ? 'Stop Cycle' : 'Start Cycle';
@@ -94,28 +104,32 @@
       statusBtn.className = `status-btn ${active ? 'status-active' : 'status-inactive'}`;
     });
 
+    // Timer (globaal én fase)
     socket.on('sbr_timer', data => {
       timerDisp.textContent = `Timer: ${data.timer} s`;
       if (data.phase) {
         currentPhase   = data.phase;
         currentElapsed = data.phase_elapsed;
-        const pretty   = data.phase.charAt(0).toUpperCase() + data.phase.slice(1);
-        phaseNameEl.textContent  = `Fase: ${pretty}`;
+        const pretty = data.phase.charAt(0).toUpperCase() + data.phase.slice(1);
+        phaseNameEl.textContent = `Fase: ${pretty}`;
         const total = phaseDurations[data.phase] || data.phase_duration;
         phaseTimerEl.textContent = `${data.phase_elapsed} / ${total} s`;
       }
     });
 
+    // Nieuwe fasetijden ontvangen
     socket.on('sbr_phase_times', data => {
-      // update lokale durations
       phaseDurations.influent = data.influent_seconds;
+      phaseDurations.react    = data.react_seconds;      // nieuwe property
       phaseDurations.effluent = data.effluent_seconds;
-      // werk inputs en displays bij
+      // werk inputs & labels bij
       inflInput.value = data.influent_minutes;
+      reactInput.value = data.react_minutes;
       efflInput.value = data.effluent_minutes;
-      inflDisp.textContent = `(huidig: ${data.influent_minutes} m)`;
-      efflDisp.textContent = `(huidig: ${data.effluent_minutes} m)`;
-      // indien in fase, update fase-totalen
+      inflDisp.textContent  = `(huidig: ${data.influent_minutes} m)`;
+      reactDisp.textContent = `(huidig: ${data.react_minutes} m)`;
+      efflDisp.textContent  = `(huidig: ${data.effluent_minutes} m)`;
+      // als we midden in een fase zitten, toon juiste totalen
       if (currentPhase) {
         phaseTimerEl.textContent = `${currentElapsed} / ${phaseDurations[currentPhase]} s`;
       }
@@ -125,24 +139,31 @@
       alert('Fout: ' + err.error);
     });
 
+    // Verzamel & verzend fasetijden
     function sendPhaseTimes() {
       const infl = parseFloat(inflInput.value);
+      const react = parseFloat(reactInput.value);
       const effl = parseFloat(efflInput.value);
-      if (isNaN(infl) || isNaN(effl) || infl <= 0 || effl <= 0) {
-        alert('Voer geldige tijden in (minuut > 0)');
+      if ([infl,react,effl].some(v => isNaN(v) || v <= 0)) {
+        alert('Alle tijden moeten > 0 zijn');
         return;
       }
-      // reflecteer direct
       phaseDurations.influent = Math.round(infl * 60);
+      phaseDurations.react    = Math.round(react * 60);
       phaseDurations.effluent = Math.round(effl * 60);
-      inflDisp.textContent = `(huidig: ${infl} m)`;
-      efflDisp.textContent = `(huidig: ${effl} m)`;
-      socket.emit('sbr_set_phase_times', { influent: infl, effluent: effl });
+      inflDisp.textContent  = `(huidig: ${infl} m)`;
+      reactDisp.textContent = `(huidig: ${react} m)`;
+      efflDisp.textContent  = `(huidig: ${effl} m)`;
+      socket.emit('sbr_set_phase_times', {
+        influent: infl,
+        react:    react,        // nieuw veld
+        effluent: effl
+      });
     }
 
-    // knop en Enter op inputs
+    // knop en Enter voor alle inputs
     btnSet.addEventListener('click', sendPhaseTimes);
-    [inflInput, efflInput].forEach(input => {
+    [inflInput, reactInput, efflInput].forEach(input => {
       input.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
           e.preventDefault();
