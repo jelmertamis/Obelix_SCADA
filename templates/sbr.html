@@ -1,32 +1,55 @@
 <!-- templates/sbr.html -->
 {% extends 'base.html' %}
 {% block title %}SBR Configuratie & Status{% endblock %}
+
 {% block content %}
 <section class="sbr-config">
   <h1>SBR Configuratie & Status</h1>
-  <div class="sbr-cycle-time" style="margin-bottom:1rem; text-align:center;">
-    <label for="cycle-time-input">Cyclustijd (minuten):</label>
-    <input type="number" id="cycle-time-input" step="0.1" min="0.1" value="{{ cycle_time_minutes }}">
-    <button type="button" id="btn-set-cycle-time" class="primary-btn">Stel in</button>
-    <span id="cycle-time-display">Ingestelde cyclustijd: {{ cycle_time_minutes }} minuten</span>
+
+  <!-- Fase-tijden instellen -->
+  <div class="sbr-phase-times" style="margin-bottom:1rem; text-align:center;">
+    <label>
+      Influent (min):
+      <input type="number" id="influent-input" step="0.1" min="0.1">
+    </label>
+    <span id="influent-display"></span>
+    &nbsp;&nbsp;
+    <label>
+      Effluent (min):
+      <input type="number" id="effluent-input" step="0.1" min="0.1">
+    </label>
+    <span id="effluent-display"></span>
+    <br><br>
+    <button type="button" id="btn-set-phases" class="primary-btn">Stel fasetijden in</button>
   </div>
+
+  <!-- Cycle controls -->
   <div class="sbr-buttons" style="margin-bottom:1rem; text-align:center;">
-    <button type="button" id="btn-toggle" class="primary-btn">
-      {% if cycle_active %}Stop Cycle{% else %}Start Cycle{% endif %}
-    </button>
+    <button type="button" id="btn-toggle" class="primary-btn">Start Cycle</button>
     <button type="button" id="btn-reset" class="primary-btn">Reset Cycle</button>
   </div>
+
+  <!-- Status indicator -->
   <div class="sbr-status-indicator" style="margin-bottom:1rem; text-align:center;">
-    <button id="status-indicator" class="status-btn" disabled>
-      Cycle: {% if cycle_active %}ACTIVE{% else %}INACTIVE{% endif %}
+    <button id="status-indicator" class="status-btn status-inactive" disabled>
+      Cycle: INACTIVE
     </button>
   </div>
+
+  <!-- Globale timer -->
   <div class="sbr-timer" style="margin-bottom:1rem; text-align:center;">
     <span id="timer-display">Timer: 0 s</span>
-    <span id="total-time-display">Totaal: {{ (cycle_time_minutes * 60) | int }} s</span>
+  </div>
+
+  <!-- Fase-specifieke timer -->
+  <div class="sbr-phase-status" style="margin-bottom:1rem; text-align:center;">
+    <span id="phase-name">Fase: —</span>
+    &nbsp;|&nbsp;
+    <span id="phase-timer">0 / 0 s</span>
   </div>
 </section>
 {% endblock %}
+
 {% block scripts %}
   {{ super() }}
   <style>
@@ -36,75 +59,103 @@
       font-weight: bold;
       border: none;
       border-radius: 5px;
-      cursor: default;
     }
-    .status-active { background-color: #28a745; color: white; }
+    .status-active   { background-color: #28a745; color: white; }
     .status-inactive { background-color: #dc3545; color: white; }
-    .sbr-cycle-time, .sbr-timer {
-      font-size: 16px;
-      font-weight: bold;
-    }
-    #cycle-time-input {
-      width: 80px;
-      padding: 5px;
-      margin: 0 10px;
-    }
   </style>
+
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <script>
-    const socket = io('/sbr');
-    const btnToggle = document.getElementById('btn-toggle');
-    const btnReset = document.getElementById('btn-reset');
-    const btnSetCycleTime = document.getElementById('btn-set-cycle-time');
-    const statusIndicator = document.getElementById('status-indicator');
-    const timerDisplay = document.getElementById('timer-display');
-    const cycleTimeInput = document.getElementById('cycle-time-input');
-    const cycleTimeDisplay = document.getElementById('cycle-time-display');
-    const totalTimeDisplay = document.getElementById('total-time-display');
+    const socket        = io('/sbr');
+    const inflInput     = document.getElementById('influent-input');
+    const efflInput     = document.getElementById('effluent-input');
+    const inflDisp      = document.getElementById('influent-display');
+    const efflDisp      = document.getElementById('effluent-display');
+    const btnSet        = document.getElementById('btn-set-phases');
+    const btnToggle     = document.getElementById('btn-toggle');
+    const btnReset      = document.getElementById('btn-reset');
+    const statusBtn     = document.getElementById('status-indicator');
+    const timerDisp     = document.getElementById('timer-display');
+    const phaseNameEl   = document.getElementById('phase-name');
+    const phaseTimerEl  = document.getElementById('phase-timer');
+
+    // Houd fasetijden lokaal bij om redraw door server-events te overstemmen
+    const phaseDurations = { influent: 0, effluent: 0 };
+    let currentPhase = null, currentElapsed = 0;
 
     socket.on('connect', () => {
-      console.log('Connected to /sbr namespace');
+      socket.emit('sbr_get_phase_times');
     });
 
-    socket.on('sbr_status', status => {
-      console.log('Received sbr_status:', status);
-      btnToggle.textContent = status.active ? 'Stop Cycle' : 'Start Cycle';
-      statusIndicator.textContent = `Cycle: ${status.active ? 'ACTIVE' : 'INACTIVE'}`;
-      statusIndicator.className = `status-btn ${status.active ? 'status-active' : 'status-inactive'}`;
+    socket.on('sbr_status', data => {
+      const active = data.active;
+      btnToggle.textContent = active ? 'Stop Cycle' : 'Start Cycle';
+      statusBtn.textContent = `Cycle: ${active ? 'ACTIVE' : 'INACTIVE'}`;
+      statusBtn.className = `status-btn ${active ? 'status-active' : 'status-inactive'}`;
     });
 
     socket.on('sbr_timer', data => {
-      console.log('Received sbr_timer:', data);
-      timerDisplay.textContent = `Timer: ${data.timer} s`;
+      timerDisp.textContent = `Timer: ${data.timer} s`;
+      if (data.phase) {
+        currentPhase   = data.phase;
+        currentElapsed = data.phase_elapsed;
+        const pretty   = data.phase.charAt(0).toUpperCase() + data.phase.slice(1);
+        phaseNameEl.textContent  = `Fase: ${pretty}`;
+        const total = phaseDurations[data.phase] || data.phase_duration;
+        phaseTimerEl.textContent = `${data.phase_elapsed} / ${total} s`;
+      }
     });
 
-    socket.on('sbr_cycle_time', data => {
-      console.log('Received sbr_cycle_time:', data);
-      cycleTimeInput.value = data.cycle_time_minutes;
-      cycleTimeDisplay.textContent = `Ingestelde cyclustijd: ${data.cycle_time_minutes} minuten`;
-      totalTimeDisplay.textContent = `Totaal: ${data.cycle_time_seconds} s`;
+    socket.on('sbr_phase_times', data => {
+      // update lokale durations
+      phaseDurations.influent = data.influent_seconds;
+      phaseDurations.effluent = data.effluent_seconds;
+      // werk inputs en displays bij
+      inflInput.value = data.influent_minutes;
+      efflInput.value = data.effluent_minutes;
+      inflDisp.textContent = `(huidig: ${data.influent_minutes} m)`;
+      efflDisp.textContent = `(huidig: ${data.effluent_minutes} m)`;
+      // indien in fase, update fase-totalen
+      if (currentPhase) {
+        phaseTimerEl.textContent = `${currentElapsed} / ${phaseDurations[currentPhase]} s`;
+      }
     });
 
     socket.on('sbr_error', err => {
-      console.error('SBR error:', err.error);
       alert('Fout: ' + err.error);
+    });
+
+    function sendPhaseTimes() {
+      const infl = parseFloat(inflInput.value);
+      const effl = parseFloat(efflInput.value);
+      if (isNaN(infl) || isNaN(effl) || infl <= 0 || effl <= 0) {
+        alert('Voer geldige tijden in (minuut > 0)');
+        return;
+      }
+      // reflecteer direct
+      phaseDurations.influent = Math.round(infl * 60);
+      phaseDurations.effluent = Math.round(effl * 60);
+      inflDisp.textContent = `(huidig: ${infl} m)`;
+      efflDisp.textContent = `(huidig: ${effl} m)`;
+      socket.emit('sbr_set_phase_times', { influent: infl, effluent: effl });
+    }
+
+    // knop en Enter op inputs
+    btnSet.addEventListener('click', sendPhaseTimes);
+    [inflInput, efflInput].forEach(input => {
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendPhaseTimes();
+        }
+      });
     });
 
     btnToggle.addEventListener('click', () => {
       socket.emit('sbr_control', { action: 'toggle' });
     });
-
     btnReset.addEventListener('click', () => {
       socket.emit('sbr_control', { action: 'reset' });
-    });
-
-    btnSetCycleTime.addEventListener('click', () => {
-      const minutes = parseFloat(cycleTimeInput.value);
-      if (isNaN(minutes) || minutes <= 0) {
-        alert('Voer een geldige cyclustijd in (minuten > 0)');
-        return;
-      }
-      socket.emit('sbr_set_cycle_time', { minutes: minutes });
     });
   </script>
 {% endblock %}

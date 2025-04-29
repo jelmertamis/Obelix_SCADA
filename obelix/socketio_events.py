@@ -28,56 +28,32 @@ def init_socketio(socketio):
             if unit['type'] == 'relay':
                 try:
                     states = read_relay_states(i)
-                    log(f"Relaisstatussen voor unit {i} ({unit['name']}): {states}")
-                    for coil in range(len(states)):
+                    for coil, actual in enumerate(states):
                         if not fallback_mode:
                             saved = get_relay_state(i, coil)
-                            actual = states[coil]
                             state_str = 'ON' if actual else 'OFF'
-                            if saved is None or saved != state_str:
+                            if saved != state_str:
                                 save_relay_state(i, coil, state_str)
-                    item = {
-                        'idx':    i,
-                        'name':   unit['name'],
-                        'states': states
-                    }
+                    item = {'idx': i, 'name': unit['name'], 'states': states}
                     if i == r302_ctrl.unit:
-                        item['modes'] = [
-                            r302_ctrl.get_mode(coil)
-                            for coil in range(len(states))
-                        ]
+                        item['modes'] = [r302_ctrl.get_mode(c) for c in range(len(states))]
                     out.append(item)
                 except Exception as e:
-                    log(f"⚠ Fout bij ophalen relaisstatus unit {i} ({unit['name']}): {e}")
-                    out.append({
-                        'idx':    i,
-                        'name':   unit['name'],
-                        'states': [False] * 8
-                    })
+                    log(f"Error relays unit {i}: {e}")
+                    out.append({'idx': i, 'name': unit['name'], 'states': [False]*8})
         emit('init_relays', out, namespace='/relays')
 
     @socketio.on('toggle_relay', namespace='/relays')
     def ws_toggle_relay(msg):
         try:
             idx, coil, want = msg['unit_idx'], msg['coil_idx'], msg['state']
-            clients = get_clients()
-            if idx < 0 or idx >= len(clients):
-                raise ValueError(f"Ongeldige unit_idx: {idx}")
-            if coil < 0 or coil >= 8:
-                raise ValueError(f"Ongeldige coil_idx: {coil}")
-            if want not in ('ON','OFF'):
-                raise ValueError(f"Ongeldige state: {want}")
-            log(f"🔄 Relay change requested: unit {idx}, coil {coil} → {want}")
-            inst = clients[idx]
+            inst = get_clients()[idx]
             with modbus_lock:
                 inst.write_bit(coil, want=='ON', functioncode=5)
             save_relay_state(idx, coil, want)
-            emit('relay_toggled',
-                 {'unit_idx': idx, 'coil_idx': coil, 'state': want},
+            emit('relay_toggled', {'unit_idx': idx, 'coil_idx': coil, 'state': want},
                  namespace='/relays', broadcast=True)
-            log(f"✔ Relay changed: unit {idx}, coil {coil} is now {want}")
         except Exception as e:
-            log(f"⚠ Modbus error toggling unit {idx}, coil {coil}: {e}")
             emit('relay_error', {'error': str(e)}, namespace='/relays')
 
     # ----- Sensors namespace -----
@@ -89,8 +65,7 @@ def init_socketio(socketio):
     @socketio.on('connect', namespace='/cal')
     def ws_cal_connect(auth):
         log("SocketIO: /cal connected")
-        payload = get_all_calibrations()
-        emit('init_cal', payload, namespace='/cal')
+        emit('init_cal', get_all_calibrations(), namespace='/cal')
 
     @socketio.on('set_cal_points', namespace='/cal')
     def ws_set_cal(msg):
@@ -98,20 +73,16 @@ def init_socketio(socketio):
             u, ch = msg['unit'], msg['channel']
             raw1, phys1 = msg['raw1'], msg['phys1']
             raw2, phys2 = msg['raw2'], msg['phys2']
-            unitStr = msg.get('unitStr', '')
             if raw1 == raw2:
                 raise ValueError("raw1 en raw2 mogen niet gelijk zijn")
             scale = (phys2 - phys1) / (raw2 - raw1)
             offset = phys1 - scale * raw1
-            save_calibration(u, ch, scale, offset, phys1, phys2, unitStr)
+            save_calibration(u, ch, scale, offset, phys1, phys2, msg.get('unitStr', ''))
             emit('cal_saved', {
-                'unit':     u,
-                'channel':  ch,
-                'scale':    scale,
-                'offset':   offset,
-                'phys_min': phys1,
-                'phys_max': phys2,
-                'unitStr':  unitStr
+                'unit': u, 'channel': ch,
+                'scale': scale, 'offset': offset,
+                'phys_min': phys1, 'phys_max': phys2,
+                'unitStr': msg.get('unitStr', '')
             }, namespace='/cal')
         except Exception as e:
             emit('cal_error', {'error': str(e)}, namespace='/cal')
@@ -126,23 +97,16 @@ def init_socketio(socketio):
             try:
                 with modbus_lock:
                     raw_out = inst.read_register(ch, functioncode=3)
-                phys_out = round((raw_out / 4095.0) * 20.0, 2)
+                phys_out = round((raw_out / 4095) * 20.0, 2)
                 pct = get_aio_setting(ch)
-                if pct is None:
-                    pct = round((phys_out - 4.0) / 16.0 * 100.0, 1) if phys_out > 4.0 else None
                 rows.append({
-                    'channel':     ch,
-                    'raw_out':     raw_out,
-                    'phys_out':    phys_out,
-                    'percent_out': pct
+                    'channel': ch, 'raw_out': raw_out,
+                    'phys_out': phys_out, 'percent_out': pct
                 })
             except Exception as e:
-                log(f"⚠ Error reading AIO channel {ch}: {e}")
                 rows.append({
-                    'channel':     ch,
-                    'raw_out':     0,
-                    'phys_out':    0.0,
-                    'percent_out': get_aio_setting(ch)
+                    'channel': ch, 'raw_out': 0,
+                    'phys_out': 0.0, 'percent_out': get_aio_setting(ch)
                 })
         emit('aio_init', rows, namespace='/aio')
 
@@ -150,23 +114,17 @@ def init_socketio(socketio):
     def ws_aio_set(msg):
         try:
             ch, pct = msg['channel'], float(msg['percent'])
-            if not 0 <= pct <= 100:
-                raise ValueError(f"Invalid percent: {pct}")
-            mA = 4.0 + (pct / 100.0) * 16.0
-            raw = int((mA / 20.0) * 4095)
+            mA = 4.0 + pct/100.0 * 16.0
+            raw = int(mA/20.0 * 4095)
             inst = get_clients()[Config.AIO_IDX]
             with modbus_lock:
                 inst.write_register(ch, raw, functioncode=6)
             save_aio_setting(ch, pct)
             emit('aio_updated', {
-                'channel':     ch,
-                'raw_out':     raw,
-                'phys_out':    round(mA, 2),
-                'percent_out': pct
+                'channel': ch, 'raw_out': raw,
+                'phys_out': round(mA,2), 'percent_out': pct
             }, namespace='/aio')
-            log(f"✔ AIO channel {ch} set to {pct}%")
         except Exception as e:
-            log(f"⚠ Error setting AIO channel {ch}: {e}")
             emit('aio_error', {'error': str(e)}, namespace='/aio')
 
     # ----- R302 Reactor namespace -----
@@ -177,56 +135,53 @@ def init_socketio(socketio):
 
     @socketio.on('set_mode', namespace='/r302')
     def ws_set_mode(msg):
-        coil, mode = msg['coil'], msg['mode']
-        r302_ctrl.set_mode(coil, mode)
+        r302_ctrl.set_mode(msg['coil'], msg['mode'])
         emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
 
     # ----- SBR namespace -----
     @socketio.on('connect', namespace='/sbr')
     def ws_sbr_connect(auth):
-        log("▶ SocketIO: /sbr connected")
+        log("SocketIO: /sbr connected")
         ctrl = auto_control.sbr_controller
         if not ctrl:
-            emit('sbr_error', {'error': 'SBR controller not initialized'}, namespace='/sbr')
+            emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
-        active = ctrl.start_event.is_set()
-        emit('sbr_status', {'active': active}, namespace='/sbr')
+        emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
         emit('sbr_timer', {'timer': ctrl.timer}, namespace='/sbr')
-        emit('sbr_cycle_time', {
-            'cycle_time_minutes': float(get_setting('sbr_cycle_time_minutes', '1.66667')),
-            'cycle_time_seconds': ctrl.cycle_time_seconds
-        }, namespace='/sbr')
+        ctrl._emit_phase_times()  # direct de opgeslagen tijden
 
     @socketio.on('sbr_control', namespace='/sbr')
     def ws_sbr_control(msg):
-        log(f"▶ Received sbr_control: {msg}")
         ctrl = auto_control.sbr_controller
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
         action = msg.get('action')
         if action == 'toggle':
-            if ctrl.start_event.is_set():
-                ctrl.stop()
-            else:
-                ctrl.start()
+            ctrl.stop() if ctrl.start_event.is_set() else ctrl.start()
         elif action == 'reset':
             ctrl.reset()
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
 
-    @socketio.on('sbr_set_cycle_time', namespace='/sbr')
-    def ws_sbr_set_cycle_time(msg):
-        log(f"▶ Received sbr_set_cycle_time: {msg}")
+    @socketio.on('sbr_set_phase_times', namespace='/sbr')
+    def ws_sbr_set_phase_times(msg):
         ctrl = auto_control.sbr_controller
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
-        minutes = msg.get('minutes')
         try:
-            minutes = float(minutes)
-            if minutes <= 0:
-                raise ValueError("Cyclustijd moet groter zijn dan 0")
-            ctrl.set_cycle_time(minutes)
-        except (ValueError, TypeError) as e:
+            infl = float(msg['influent'])
+            effl = float(msg['effluent'])
+            if infl <= 0 or effl <= 0:
+                raise ValueError("Tijden moeten groter dan 0 zijn")
+            ctrl.set_phase_times(infl, effl)
+        except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
+
+    @socketio.on('sbr_get_phase_times', namespace='/sbr')
+    def ws_sbr_get_phase_times():
+        """Verzend de laatst opgeslagen fasetijden naar de client."""
+        ctrl = auto_control.sbr_controller
+        if ctrl:
+            ctrl._emit_phase_times()
