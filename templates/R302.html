@@ -5,41 +5,59 @@
 
 {% block head %}
 <style>
-  /* Container grid */
-  #relay-controls {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 1rem;
-    margin: 1rem 0;
-    justify-items: center;
+  /* ⚙️ Section en inhoud centreren */
+  section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    padding: 1rem 0;
   }
 
+  /* 🗂️ Grid-container voor relay-kaarten */
+  #relay-controls {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 1rem auto;
+    max-width: 1200px;
+    justify-content: center;
+  }
+
+  /* 📦 Relay-kaart styling */
   .relay-control {
     position: relative;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
     align-items: center;
-    padding: 0.5rem;
+    width: 180px;
+    height: 200px;
+    padding: 1rem;
     background: #fff;
     border-radius: 0.5rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    width: 180px;
+    overflow: visible; /* Laat popup buiten de kaart zien */
   }
   .relay-control h3 {
-    font-size: 1rem;
-    margin: 0.5rem 0;
+    font-size: 1.1rem;
+    margin: 0;
     text-align: center;
   }
 
+  /* 🔘 Status-knop styling */
   .status-btn {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.9rem;
-    font-weight: bold;
-    border-radius: 0.25rem;
-    border: none;
-    cursor: pointer;
     width: 100%;
+    height: 3.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
     color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: box-shadow 0.3s ease, border 0.3s ease;
   }
   .status-manual-on   { background: #28a745; }
@@ -52,30 +70,44 @@
   .status-auto-on  { background: #28a745; }
   .status-auto-off { background: #dc3545; }
 
+  /* 🔽 Pop-up styling */
   .mode-popup {
-    display: none;
     position: absolute;
-    top: 2.5rem;
-    right: 0.5rem;
+    top: 70%;               /* In plaats van onder de kaart, over de kaart */
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
     background: #fff;
     border: 1px solid #ccc;
     border-radius: 0.25rem;
-    padding: 0.25rem;
     box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-    z-index: 10;
-    width: 100%;
+    min-width: 180px;
+    z-index: 1000;          /* Boven alle andere elementen */
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease;
   }
-  .mode-popup.show { display: block; }
+  .mode-popup.show {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  /* 🔲 Knoppen in de pop-up */
   .mode-popup button {
-    display: block;
-    width: 100%;
-    margin: 0.2rem 0;
-    padding: 0.3rem 0;
-    font-size: 0.85rem;
+    width: 80%;
+    height: 3rem;
+    font-size: 0.9rem;
     border: none;
     border-radius: 0.25rem;
     cursor: pointer;
     color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .mode-popup .manual-on   { background: #28a745; }
   .mode-popup .manual-off  { background: #dc3545; }
@@ -92,10 +124,13 @@
   <div id="relay-controls"></div>
 
   <h2>Sensors</h2>
-  <table class="sensor-table">
+  <table class="sensor-table" style="max-width:800px; width:100%; margin-top:1rem;">
     <thead>
       <tr>
-        <th>Naam</th><th>Ruwe Waarde</th><th>Gecalibreerd</th><th>Eenheid</th>
+        <th>Naam</th>
+        <th>Ruwe Waarde</th>
+        <th>Gecalibreerd</th>
+        <th>Eenheid</th>
       </tr>
     </thead>
     <tbody id="sensorBody"></tbody>
@@ -116,11 +151,11 @@
   const relayModes   = {};
 
   function buildRelayControls(){
-    const c = document.getElementById('relay-controls');
-    c.innerHTML = '';
-    for(let coil=0;coil<=5;coil++){
-      relayModes[coil]='AUTO';
-      c.insertAdjacentHTML('beforeend', `
+    const container = document.getElementById('relay-controls');
+    container.innerHTML = '';
+    for(let coil = 0; coil <= 5; coil++){
+      relayModes[coil] = 'AUTO';
+      container.insertAdjacentHTML('beforeend', `
         <div class="relay-control" id="relay-${coil}">
           <h3>${relayLabels[coil]}</h3>
           <button class="status-btn status-auto-off" id="status-${coil}">Loading…</button>
@@ -135,76 +170,73 @@
 
   function updateRelayStatus(coil, physOn, mode){
     const btn = document.getElementById(`status-${coil}`);
-    btn.className='status-btn';
-    relayModes[coil]=mode;
-    if(mode==='MANUAL_ON'){
-      btn.textContent='Manual ON'; btn.classList.add('status-manual-on');
-    } else if(mode==='MANUAL_OFF'){
-      btn.textContent='Manual OFF';btn.classList.add('status-manual-off');
+    btn.className = 'status-btn';
+    relayModes[coil] = mode;
+    if(mode === 'MANUAL_ON'){
+      btn.textContent = 'Manual ON';
+      btn.classList.add('status-manual-on');
+    } else if(mode === 'MANUAL_OFF'){
+      btn.textContent = 'Manual OFF';
+      btn.classList.add('status-manual-off');
     } else {
-      btn.textContent= physOn?'Auto ON':'Auto OFF';
-      btn.classList.add( physOn?'status-auto-on':'status-auto-off' );
+      btn.textContent = physOn ? 'Auto ON' : 'Auto OFF';
+      btn.classList.add(physOn ? 'status-auto-on' : 'status-auto-off');
     }
   }
 
   function hideAllPopups(){
     document.querySelectorAll('.mode-popup.show')
-      .forEach(p=>p.classList.remove('show'));
+            .forEach(p => p.classList.remove('show'));
   }
 
   buildRelayControls();
 
-  // Delegate clicks on the relay-controls container
-  document.getElementById('relay-controls').addEventListener('click', e=>{
-    // 1) status-btn clicked → toggle its popup, stopPropagation
+  document.getElementById('relay-controls').addEventListener('click', e => {
     if(e.target.classList.contains('status-btn')){
       e.stopPropagation();
       const coil = e.target.id.split('-')[1];
-      const pop  = document.getElementById(`popup-${coil}`);
-      const was  = pop.classList.contains('show');
+      const popup = document.getElementById(`popup-${coil}`);
+      const was = popup.classList.contains('show');
       hideAllPopups();
-      if(!was) pop.classList.add('show');
+      if(!was) popup.classList.add('show');
       return;
     }
-    // 2) popup-button clicked → set mode, stopPropagation
-    const btn = e.target.closest('.mode-popup button');
-    if(btn){
+    const choice = e.target.closest('.mode-popup button');
+    if(choice){
       e.stopPropagation();
-      const coil = Number(btn.dataset.coil);
+      const coil = Number(choice.dataset.coil);
       let mode = 'AUTO';
-      if(btn.classList.contains('manual-on'))   mode='MANUAL_ON';
-      else if(btn.classList.contains('manual-off')) mode='MANUAL_OFF';
+      if(choice.classList.contains('manual-on'))   mode = 'MANUAL_ON';
+      else if(choice.classList.contains('manual-off')) mode = 'MANUAL_OFF';
       r302socket.emit('set_mode',{coil,mode});
-      updateRelayStatus(coil,mode!=='MANUAL_OFF',mode);
+      updateRelayStatus(coil, mode !== 'MANUAL_OFF', mode);
       hideAllPopups();
     }
   });
 
-  // clicking elsewhere closes popups
   document.addEventListener('click', hideAllPopups);
 
-  // server → init/update
-  r302socket.on('r302_init', status=>{
-    Object.entries(status).forEach(([coil,info])=>
-      updateRelayStatus(coil,info.physical,info.mode)
+  r302socket.on('r302_init', status => {
+    Object.entries(status).forEach(([coil, info]) =>
+      updateRelayStatus(coil, info.physical, info.mode)
     );
   });
-  r302socket.on('r302_update', status=>{
-    Object.entries(status).forEach(([coil,info])=>
-      updateRelayStatus(coil,info.physical,info.mode)
+  r302socket.on('r302_update', status => {
+    Object.entries(status).forEach(([coil, info]) =>
+      updateRelayStatus(coil, info.physical, info.mode)
     );
   });
 
-  // sensor updates
-  sensorSocket.on('sensor_update', readings=>{
-    const tbody = document.getElementById('sensorBody'); tbody.innerHTML='';
-    readings.filter(r=>r.slave_id===5).forEach(r=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML=`
+  sensorSocket.on('sensor_update', readings => {
+    const tbody = document.getElementById('sensorBody');
+    tbody.innerHTML = '';
+    readings.filter(r => r.slave_id === 5).forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
         <td>${sensorLabels[r.channel]}</td>
         <td>${r.raw}</td>
         <td>${r.value.toFixed(2)}</td>
-        <td>${r.unit||''}</td>`;
+        <td>${r.unit || ''}</td>`;
       tbody.appendChild(tr);
     });
   });
