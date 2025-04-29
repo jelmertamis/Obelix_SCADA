@@ -144,17 +144,36 @@ def init_socketio(socketio):
         log("SocketIO: /r302 connected")
         emit('r302_init', r302_ctrl.get_status(), namespace='/r302')
 
-    @socketio.on('set_mode', namespace='/r302')
-    def ws_set_mode(msg):
-        coil, mode = msg['coil'], msg['mode']
-        r302_ctrl.set_mode(coil, mode)
-        emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
-        ctrl = auto_control.sbr_controller
-        if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
-            if ctrl.current_phase in ('react', 'wait'):
-                ctrl._auto_off_all()
-            else:
-                ctrl._apply_phase(ctrl.current_phase)
+        @socketio.on('set_mode', namespace='/r302')
+        def ws_set_mode(msg):
+            coil, mode = msg['coil'], msg['mode']
+            # 1) Sla de nieuwe mode op
+            r302_ctrl.set_mode(coil, mode)
+
+            inst = get_clients()[r302_ctrl.unit]
+            # 2) Manual override: schrijf direct de gewenste staat
+            if mode == 'MANUAL_ON' or mode == 'MANUAL_OFF':
+                want_on = (mode == 'MANUAL_ON')
+                with modbus_lock:
+                    inst.write_bit(coil, want_on, functioncode=5)
+                    save_relay_state(r302_ctrl.unit, coil, 'ON' if want_on else 'OFF')
+                # Broadcast fysieke wijziging
+                emit('relay_toggled',
+                    {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want_on else 'OFF'},
+                    namespace='/relays', broadcast=True)
+                # Update alle clients met de nieuwe mode/status
+                emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
+                return
+
+            # 3) Auto-modus: pas SBR-logica toe als de cycle actief is
+            emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
+            ctrl = auto_control.sbr_controller
+            if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
+                if ctrl.current_phase in ('react', 'wait'):
+                    ctrl._auto_off_all()
+                else:
+                    ctrl._apply_phase(ctrl.current_phase)
+
 
     # ----- SBR CYCLE -----
     @socketio.on('connect', namespace='/sbr')
