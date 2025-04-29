@@ -17,10 +17,16 @@ class SBRController:
         self.r302_unit = 0
         self.r302_ctrl = R302Controller(unit_index=self.r302_unit)
         self.start_event = threading.Event()
-        self.timer = 0  # Timer in seconden
+        self.timer = 0
+        # Standaard 1.66667 minuten (100 seconden) als geen waarde in database
+        self.cycle_time_seconds = int(float(get_setting('sbr_cycle_time_minutes', '1.66667')) * 60)
         if get_setting('sbr_cycle_active', '0') == '0':
             self.set_auto_relays_off()
             self.socketio.emit('sbr_timer', {'timer': self.timer}, namespace='/sbr')
+            self.socketio.emit('sbr_cycle_time', {
+                'cycle_time_minutes': float(get_setting('sbr_cycle_time_minutes', '1.66667')),
+                'cycle_time_seconds': self.cycle_time_seconds
+            }, namespace='/sbr')
 
     def set_auto_relays_off(self):
         inst = self.clients[self.r302_unit]
@@ -37,6 +43,15 @@ class SBRController:
                                       self.r302_ctrl.get_status(),
                                       namespace='/r302')
                 log(f"🔧 Set AUTO relay {coil} ({Config.R302_RELAY_MAPPING[coil]}) to OFF")
+
+    def set_cycle_time(self, minutes: float):
+        self.cycle_time_seconds = int(float(minutes) * 60)
+        set_setting('sbr_cycle_time_minutes', str(minutes))
+        log(f"▶ SBRController: Cyclustijd ingesteld op {minutes} minuten ({self.cycle_time_seconds} seconden)")
+        self.socketio.emit('sbr_cycle_time', {
+            'cycle_time_minutes': minutes,
+            'cycle_time_seconds': self.cycle_time_seconds
+        }, namespace='/sbr')
 
     def stop(self):
         self.start_event.clear()
@@ -64,12 +79,12 @@ class SBRController:
         while True:
             self.start_event.wait()
             log("🚀 Cycle gestart")
-            while self.timer < 100 and self.start_event.is_set():
+            while self.timer < self.cycle_time_seconds and self.start_event.is_set():
                 self.socketio.sleep(1)
                 self.timer += 1
                 self.socketio.emit('sbr_timer', {'timer': self.timer}, namespace='/sbr')
-            if self.timer >= 100:
-                self.timer = 0  # Reset voor herhaling
+            if self.timer >= self.cycle_time_seconds:
+                self.timer = 0
                 self.socketio.emit('sbr_timer', {'timer': self.timer}, namespace='/sbr')
             if not self.start_event.is_set():
                 log("🔄 Cycle gestopt")

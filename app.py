@@ -1,9 +1,16 @@
 # app.py
-from flask import Flask, render_template
+import sqlite3
+from flask import Flask
 from flask_socketio import SocketIO
 from obelix.config import Config
 from obelix.database import init_db
 from obelix.sensor_database import init_sensor_db
+
+# Initialiseer databases vóór andere imports
+init_db()
+init_sensor_db()
+
+# Nu andere imports
 from obelix.modbus_client import init_modbus
 from obelix.routes import init_routes
 from obelix.socketio_events import init_socketio
@@ -15,8 +22,6 @@ app.config.from_object(Config)
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 if __name__ == '__main__':
-    init_db()
-    init_sensor_db()
     init_modbus()
     init_routes(app)
     init_socketio(socketio)

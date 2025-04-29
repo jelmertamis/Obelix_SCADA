@@ -192,6 +192,10 @@ def init_socketio(socketio):
         active = ctrl.start_event.is_set()
         emit('sbr_status', {'active': active}, namespace='/sbr')
         emit('sbr_timer', {'timer': ctrl.timer}, namespace='/sbr')
+        emit('sbr_cycle_time', {
+            'cycle_time_minutes': float(get_setting('sbr_cycle_time_minutes', '1.66667')),
+            'cycle_time_seconds': ctrl.cycle_time_seconds
+        }, namespace='/sbr')
 
     @socketio.on('sbr_control', namespace='/sbr')
     def ws_sbr_control(msg):
@@ -210,3 +214,19 @@ def init_socketio(socketio):
             ctrl.reset()
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
+
+    @socketio.on('sbr_set_cycle_time', namespace='/sbr')
+    def ws_sbr_set_cycle_time(msg):
+        log(f"▶ Received sbr_set_cycle_time: {msg}")
+        ctrl = auto_control.sbr_controller
+        if not ctrl:
+            emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
+            return
+        minutes = msg.get('minutes')
+        try:
+            minutes = float(minutes)
+            if minutes <= 0:
+                raise ValueError("Cyclustijd moet groter zijn dan 0")
+            ctrl.set_cycle_time(minutes)
+        except (ValueError, TypeError) as e:
+            emit('sbr_error', {'error': str(e)}, namespace='/sbr')

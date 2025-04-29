@@ -1,3 +1,4 @@
+# obelix/routes.py
 from flask import (
     render_template, request, send_file,
     Blueprint, url_for
@@ -92,9 +93,12 @@ def init_routes(app):
             plot_url=url_for('plot.sensor_plot_png')
         )
     
-    @app.route('/sbr')  
+    @app.route('/sbr')
     def sbr():
         cycle_active = get_setting('sbr_cycle_active', '0') == '1'
-        return render_template('sbr.html', cycle_active=cycle_active)
+        cycle_time_minutes = float(get_setting('sbr_cycle_time_minutes', '1.66667'))
+        return render_template('sbr.html', 
+                             cycle_active=cycle_active,
+                             cycle_time_minutes=cycle_time_minutes)
     
     app.register_blueprint(plot_bp)

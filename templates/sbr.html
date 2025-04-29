@@ -4,6 +4,12 @@
 {% block content %}
 <section class="sbr-config">
   <h1>SBR Configuratie & Status</h1>
+  <div class="sbr-cycle-time" style="margin-bottom:1rem; text-align:center;">
+    <label for="cycle-time-input">Cyclustijd (minuten):</label>
+    <input type="number" id="cycle-time-input" step="0.1" min="0.1" value="{{ cycle_time_minutes }}">
+    <button type="button" id="btn-set-cycle-time" class="primary-btn">Stel in</button>
+    <span id="cycle-time-display">Ingestelde cyclustijd: {{ cycle_time_minutes }} minuten</span>
+  </div>
   <div class="sbr-buttons" style="margin-bottom:1rem; text-align:center;">
     <button type="button" id="btn-toggle" class="primary-btn">
       {% if cycle_active %}Stop Cycle{% else %}Start Cycle{% endif %}
@@ -17,6 +23,7 @@
   </div>
   <div class="sbr-timer" style="margin-bottom:1rem; text-align:center;">
     <span id="timer-display">Timer: 0 s</span>
+    <span id="total-time-display">Totaal: {{ (cycle_time_minutes * 60) | int }} s</span>
   </div>
 </section>
 {% endblock %}
@@ -33,9 +40,14 @@
     }
     .status-active { background-color: #28a745; color: white; }
     .status-inactive { background-color: #dc3545; color: white; }
-    .sbr-timer {
+    .sbr-cycle-time, .sbr-timer {
       font-size: 16px;
       font-weight: bold;
+    }
+    #cycle-time-input {
+      width: 80px;
+      padding: 5px;
+      margin: 0 10px;
     }
   </style>
   <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
@@ -43,8 +55,12 @@
     const socket = io('/sbr');
     const btnToggle = document.getElementById('btn-toggle');
     const btnReset = document.getElementById('btn-reset');
+    const btnSetCycleTime = document.getElementById('btn-set-cycle-time');
     const statusIndicator = document.getElementById('status-indicator');
     const timerDisplay = document.getElementById('timer-display');
+    const cycleTimeInput = document.getElementById('cycle-time-input');
+    const cycleTimeDisplay = document.getElementById('cycle-time-display');
+    const totalTimeDisplay = document.getElementById('total-time-display');
 
     socket.on('connect', () => {
       console.log('Connected to /sbr namespace');
@@ -62,6 +78,13 @@
       timerDisplay.textContent = `Timer: ${data.timer} s`;
     });
 
+    socket.on('sbr_cycle_time', data => {
+      console.log('Received sbr_cycle_time:', data);
+      cycleTimeInput.value = data.cycle_time_minutes;
+      cycleTimeDisplay.textContent = `Ingestelde cyclustijd: ${data.cycle_time_minutes} minuten`;
+      totalTimeDisplay.textContent = `Totaal: ${data.cycle_time_seconds} s`;
+    });
+
     socket.on('sbr_error', err => {
       console.error('SBR error:', err.error);
       alert('Fout: ' + err.error);
@@ -73,6 +96,15 @@
 
     btnReset.addEventListener('click', () => {
       socket.emit('sbr_control', { action: 'reset' });
+    });
+
+    btnSetCycleTime.addEventListener('click', () => {
+      const minutes = parseFloat(cycleTimeInput.value);
+      if (isNaN(minutes) || minutes <= 0) {
+        alert('Voer een geldige cyclustijd in (minuten > 0)');
+        return;
+      }
+      socket.emit('sbr_set_cycle_time', { minutes: minutes });
     });
   </script>
 {% endblock %}
