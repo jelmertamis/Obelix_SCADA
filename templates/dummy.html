@@ -1,0 +1,38 @@
+<!-- templates/dummy.html -->
+{% extends "base.html" %}
+
+{% block title %}Dummy Sensor Instellingen{% endblock %}
+
+{% block content %}
+<section
+  class="sensor-container"
+  id="dummy-section"
+  data-units="{{ units|tojson() }}"
+>
+  <h1>Dummy Sensor Simulator</h1>
+  <table class="sensor-table">
+    <thead>
+      <tr>
+        <th>Module</th>
+        <th>Slave ID</th>
+        <th>Kanaal</th>
+        <th>Dummy Waarde</th>
+        <th>Actie</th>
+      </tr>
+    </thead>
+    <tbody id="dummyBody">
+      {# Wordt door dummy.js gevuld #}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    // Haal de units uit het data-attribuut; voorkomt conflicts met Jinja
+    window.DUMMY_UNITS = JSON.parse(
+      document.getElementById('dummy-section').dataset.units
+    );
+  </script>
+  <script src="{{ url_for('static', filename='js/dummy.js') }}"></script>
+{% endblock %}

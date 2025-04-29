@@ -43,6 +43,16 @@ def init_db():
         )
     ''')
 
+    # **Nieuw: tabel voor handmatige dummy-sensorwaarden**
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS dummy_sensor (
+            unit_index INTEGER NOT NULL,
+            channel INTEGER NOT NULL,
+            value REAL NOT NULL,
+            PRIMARY KEY(unit_index, channel)
+        )
+    ''')
+
     # Initiele relay_states vullen
     for i, unit in enumerate(Config.UNITS):
         if unit['type'] == 'relay':
@@ -163,6 +173,38 @@ def get_relay_state(unit_index, coil_index):
     c.execute('''
         SELECT state FROM relay_states WHERE unit_index=? AND coil_index=?
     ''', (unit_index, coil_index))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+# ---------------------------------------------------------------------
+# **Nieuwe helper-functies voor dummy-sensorwaarden**
+# ---------------------------------------------------------------------
+
+def set_dummy_value(unit_index, channel, value):
+    """
+    Sla een handmatig ingestelde dummy-waarde op voor een sensorkanaal.
+    """
+    conn = sqlite3.connect(Config.DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO dummy_sensor(unit_index, channel, value)
+        VALUES(?, ?, ?)
+        ON CONFLICT(unit_index, channel) DO UPDATE SET value=excluded.value
+    ''', (unit_index, channel, float(value)))
+    conn.commit()
+    conn.close()
+
+def get_dummy_value(unit_index, channel):
+    """
+    Haal de handmatig ingestelde dummy-waarde op, of None als niet gedefinieerd.
+    """
+    conn = sqlite3.connect(Config.DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        SELECT value FROM dummy_sensor
+        WHERE unit_index=? AND channel=?
+    ''', (unit_index, channel))
     row = c.fetchone()
     conn.close()
     return row[0] if row else None
