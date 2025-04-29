@@ -52,12 +52,9 @@ def init_socketio(socketio):
             with modbus_lock:
                 inst.write_bit(coil, want == 'ON', functioncode=5)
             save_relay_state(idx, coil, want)
-            emit(
-                'relay_toggled',
-                {'unit_idx': idx, 'coil_idx': coil, 'state': want},
-                namespace='/relays',
-                broadcast=True
-            )
+            emit('relay_toggled',
+                 {'unit_idx': idx, 'coil_idx': coil, 'state': want},
+                 namespace='/relays', broadcast=True)
         except Exception as e:
             log(f"Error toggling relay {idx}/{coil}: {e}")
             emit('relay_error', {'error': str(e)}, namespace='/relays')
@@ -151,7 +148,15 @@ def init_socketio(socketio):
     def ws_set_mode(msg):
         coil, mode = msg['coil'], msg['mode']
         r302_ctrl.set_mode(coil, mode)
+        # broadcast updated status
         emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
+        # reapply SBR logic if in cycle
+        ctrl = auto_control.sbr_controller
+        if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
+            if ctrl.current_phase == 'react':
+                ctrl._auto_off_all()
+            else:
+                ctrl._apply_phase(ctrl.current_phase)
 
     # ----- SBR CYCLE -----
     @socketio.on('connect', namespace='/sbr')
@@ -162,7 +167,7 @@ def init_socketio(socketio):
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
         emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
-        emit('sbr_timer', {'timer': ctrl.timer}, namespace='/sbr')
+        emit('sbr_timer',  {'timer': ctrl.timer},               namespace='/sbr')
         ctrl._emit_phase_times()
 
     @socketio.on('sbr_control', namespace='/sbr')
