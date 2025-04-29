@@ -148,12 +148,10 @@ def init_socketio(socketio):
     def ws_set_mode(msg):
         coil, mode = msg['coil'], msg['mode']
         r302_ctrl.set_mode(coil, mode)
-        # broadcast updated status
         emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
-        # reapply SBR logic if in cycle
         ctrl = auto_control.sbr_controller
         if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
-            if ctrl.current_phase == 'react':
+            if ctrl.current_phase in ('react', 'wait'):
                 ctrl._auto_off_all()
             else:
                 ctrl._apply_phase(ctrl.current_phase)
@@ -191,12 +189,13 @@ def init_socketio(socketio):
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
         try:
-            infl = float(msg['influent'])
-            react = float(msg['react'])
-            effl = float(msg['effluent'])
-            if infl <= 0 or react <= 0 or effl <= 0:
+            infl  = float(msg.get('influent',  ctrl.influent_time))
+            react = float(msg.get('react',     ctrl.react_time))
+            effl  = float(msg.get('effluent',  ctrl.effluent_time))
+            wait  = float(msg.get('wait',      ctrl.wait_time))
+            if infl <= 0 or react <= 0 or effl <= 0 or wait <= 0:
                 raise ValueError("Alle tijden moeten > 0 zijn")
-            ctrl.set_phase_times(infl, react, effl)
+            ctrl.set_phase_times(infl, react, effl, wait)
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 

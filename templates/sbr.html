@@ -1,182 +1,163 @@
 <!-- templates/sbr.html -->
 {% extends 'base.html' %}
+
 {% block title %}SBR Configuratie & Status{% endblock %}
 
+{% block head %}
+<style>
+  section.sbr-config {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    width: 100%;
+  }
+  .sbr-phase-list {
+    width: 100%;
+    max-width: 500px;
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .phase-box {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    background: #f9f9f9;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    gap: 0.5rem;
+    transition: background 0.3s;
+  }
+  .phase-box.active { background: #28a745; color: #fff; }
+  section.sbr-config.paused .phase-box.active {
+    background: #ffc107;
+    color: #333;
+  }
+  .phase-name { font-weight: bold; }
+  .phase-progress { text-align: right; }
+  .phase-input {
+    width: 4rem;
+    padding: 0.3rem;
+    font-size: 0.9rem;
+    border: 1px solid #ccc;
+    border-radius: 0.25rem;
+  }
+  .phase-set-btn {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 0.25rem;
+    background: #007bff;
+    color: #fff;
+    cursor: pointer;
+  }
+  .phase-set-btn:hover { background: #0056b3; }
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="sbr-config">
+<section class="sbr-config" id="sbr-config-section">
   <h1>SBR Configuratie & Status</h1>
-
-  <!-- Fase-tijden instellen -->
-  <div class="sbr-phase-times" style="margin-bottom:1rem; text-align:center;">
-    <label>
-      Influent (min):
-      <input type="number" id="influent-input" step="0.1" min="0.1">
-    </label>
-    <span id="influent-display"></span>
-    &nbsp;&nbsp;
-    <label>
-      React 1 (min):
-      <input type="number" id="react-input" step="0.1" min="0.1">
-    </label>
-    <span id="react-display"></span>
-    &nbsp;&nbsp;
-    <label>
-      Effluent (min):
-      <input type="number" id="effluent-input" step="0.1" min="0.1">
-    </label>
-    <span id="effluent-display"></span>
-    <br><br>
-    <button type="button" id="btn-set-phases" class="primary-btn">Stel fasetijden in</button>
+  <div style="margin-top:1rem;">
+    <button id="btn-toggle" class="phase-set-btn">Start Cycle</button>
+    <button id="btn-reset"  class="phase-set-btn">Reset Cycle</button>
   </div>
-
-  <!-- Cycle controls -->
-  <div class="sbr-buttons" style="margin-bottom:1rem; text-align:center;">
-    <button type="button" id="btn-toggle" class="primary-btn">Start Cycle</button>
-    <button type="button" id="btn-reset" class="primary-btn">Reset Cycle</button>
-  </div>
-
-  <!-- Status indicator -->
-  <div class="sbr-status-indicator" style="margin-bottom:1rem; text-align:center;">
-    <button id="status-indicator" class="status-btn status-inactive" disabled>
-      Cycle: INACTIVE
-    </button>
-  </div>
-
-  <!-- Globale timer -->
-  <div class="sbr-timer" style="margin-bottom:1rem; text-align:center;">
-    <span id="timer-display">Timer: 0 s</span>
-  </div>
-
-  <!-- Fase-specifieke timer -->
-  <div class="sbr-phase-status" style="margin-bottom:1rem; text-align:center;">
-    <span id="phase-name">Fase: —</span>
-    &nbsp;|&nbsp;
-    <span id="phase-timer">0 / 0 s</span>
+  <div class="sbr-phase-list">
+    {% for key,label in [('influent','Influent'),('react','React'),('effluent','Effluent'),('wait','Wait')] %}
+    <div class="phase-box" id="phase-{{ key }}-box">
+      <div class="phase-name">{{ label }}</div>
+      <div class="phase-progress" id="{{ key }}-progress">0 / 0 s</div>
+      <input type="number" step="0.1" min="0.1"
+             class="phase-input" id="{{ key }}-input" placeholder="min">
+      <button class="phase-set-btn" data-phase="{{ key }}">Set</button>
+    </div>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-  {{ super() }}
-  <style>
-    .status-btn {
-      padding: 10px 20px;
-      font-size: 16px;
-      font-weight: bold;
-      border: none;
-      border-radius: 5px;
-    }
-    .status-active   { background-color: #28a745; color: white; }
-    .status-inactive { background-color: #dc3545; color: white; }
-  </style>
+<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+<script>
+  const socket = io('/sbr');
+  const section = document.getElementById('sbr-config-section');
+  const phases = ['influent','react','effluent','wait'];
+  const boxes = {};
+  const progressElems = {};
+  const inputElems = {};
+  const setBtns = {};
 
-  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
-  <script>
-    const socket         = io('/sbr');
-    const inflInput      = document.getElementById('influent-input');
-    const reactInput     = document.getElementById('react-input');
-    const efflInput      = document.getElementById('effluent-input');
-    const inflDisp       = document.getElementById('influent-display');
-    const reactDisp      = document.getElementById('react-display');
-    const efflDisp       = document.getElementById('effluent-display');
-    const btnSet         = document.getElementById('btn-set-phases');
-    const btnToggle      = document.getElementById('btn-toggle');
-    const btnReset       = document.getElementById('btn-reset');
-    const statusBtn      = document.getElementById('status-indicator');
-    const timerDisp      = document.getElementById('timer-display');
-    const phaseNameEl    = document.getElementById('phase-name');
-    const phaseTimerEl   = document.getElementById('phase-timer');
+  // Setup element references and handlers
+  phases.forEach(p => {
+    boxes[p] = document.getElementById(`phase-${p}-box`);
+    progressElems[p] = document.getElementById(`${p}-progress`);
+    inputElems[p] = document.getElementById(`${p}-input`);
+    setBtns[p] = document.querySelector(`.phase-set-btn[data-phase="${p}"]`);
 
-    // Bewaar fasetijden lokaal
-    const phaseDurations = { influent: 0, react: 0, effluent: 0 };
-    let currentPhase = null, currentElapsed = 0;
-
-    // Na connect direct de tijden opvragen
-    socket.on('connect', () => {
-      socket.emit('sbr_get_phase_times');
-    });
-
-    // Status
-    socket.on('sbr_status', data => {
-      const active = data.active;
-      btnToggle.textContent = active ? 'Stop Cycle' : 'Start Cycle';
-      statusBtn.textContent = `Cycle: ${active ? 'ACTIVE' : 'INACTIVE'}`;
-      statusBtn.className = `status-btn ${active ? 'status-active' : 'status-inactive'}`;
-    });
-
-    // Timer (globaal én fase)
-    socket.on('sbr_timer', data => {
-      timerDisp.textContent = `Timer: ${data.timer} s`;
-      if (data.phase) {
-        currentPhase   = data.phase;
-        currentElapsed = data.phase_elapsed;
-        const pretty = data.phase.charAt(0).toUpperCase() + data.phase.slice(1);
-        phaseNameEl.textContent = `Fase: ${pretty}`;
-        const total = phaseDurations[data.phase] || data.phase_duration;
-        phaseTimerEl.textContent = `${data.phase_elapsed} / ${total} s`;
+    // Klik handler: stuur alle vier fasetijden tegelijk
+    setBtns[p].addEventListener('click', () => {
+      const infl = parseFloat(inputElems['influent'].value);
+      const react = parseFloat(inputElems['react'].value);
+      const effl = parseFloat(inputElems['effluent'].value);
+      const wait = parseFloat(inputElems['wait'].value);
+      if ([infl, react, effl, wait].some(v => isNaN(v) || v <= 0)) {
+        return alert('Alle tijden moeten > 0 zijn');
       }
-    });
-
-    // Nieuwe fasetijden ontvangen
-    socket.on('sbr_phase_times', data => {
-      phaseDurations.influent = data.influent_seconds;
-      phaseDurations.react    = data.react_seconds;      // nieuwe property
-      phaseDurations.effluent = data.effluent_seconds;
-      // werk inputs & labels bij
-      inflInput.value = data.influent_minutes;
-      reactInput.value = data.react_minutes;
-      efflInput.value = data.effluent_minutes;
-      inflDisp.textContent  = `(huidig: ${data.influent_minutes} m)`;
-      reactDisp.textContent = `(huidig: ${data.react_minutes} m)`;
-      efflDisp.textContent  = `(huidig: ${data.effluent_minutes} m)`;
-      // als we midden in een fase zitten, toon juiste totalen
-      if (currentPhase) {
-        phaseTimerEl.textContent = `${currentElapsed} / ${phaseDurations[currentPhase]} s`;
-      }
-    });
-
-    socket.on('sbr_error', err => {
-      alert('Fout: ' + err.error);
-    });
-
-    // Verzamel & verzend fasetijden
-    function sendPhaseTimes() {
-      const infl = parseFloat(inflInput.value);
-      const react = parseFloat(reactInput.value);
-      const effl = parseFloat(efflInput.value);
-      if ([infl,react,effl].some(v => isNaN(v) || v <= 0)) {
-        alert('Alle tijden moeten > 0 zijn');
-        return;
-      }
-      phaseDurations.influent = Math.round(infl * 60);
-      phaseDurations.react    = Math.round(react * 60);
-      phaseDurations.effluent = Math.round(effl * 60);
-      inflDisp.textContent  = `(huidig: ${infl} m)`;
-      reactDisp.textContent = `(huidig: ${react} m)`;
-      efflDisp.textContent  = `(huidig: ${effl} m)`;
       socket.emit('sbr_set_phase_times', {
         influent: infl,
-        react:    react,        // nieuw veld
-        effluent: effl
-      });
-    }
-
-    // knop en Enter voor alle inputs
-    btnSet.addEventListener('click', sendPhaseTimes);
-    [inflInput, reactInput, efflInput].forEach(input => {
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          sendPhaseTimes();
-        }
+        react:    react,
+        effluent: effl,
+        wait:     wait
       });
     });
 
-    btnToggle.addEventListener('click', () => {
-      socket.emit('sbr_control', { action: 'toggle' });
+    // Enter-toets binding
+    inputElems[p].addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        setBtns[p].click();
+      }
     });
-    btnReset.addEventListener('click', () => {
-      socket.emit('sbr_control', { action: 'reset' });
+  });
+
+  const btnToggle = document.getElementById('btn-toggle');
+  const btnReset  = document.getElementById('btn-reset');
+
+  // Initialiseer fase-tijden en status
+  socket.on('connect', () => socket.emit('sbr_get_phase_times'));
+  socket.on('sbr_phase_times', data => {
+    phases.forEach(p => {
+      // Toon voortgang op nul
+      progressElems[p].textContent = `0 / ${data[p + '_seconds']} s`;
+      // Vul input met huidige minuten
+      inputElems[p].value = data[p + '_minutes'];
     });
-  </script>
+  });
+
+  // Update cycle-knop en pauze-status
+  socket.on('sbr_status', data => {
+    btnToggle.textContent = data.active ? 'Stop Cycle' : 'Start Cycle';
+    section.classList.toggle('paused', !data.active);
+  });
+
+  btnToggle.addEventListener('click', () =>
+    socket.emit('sbr_control', { action: 'toggle' })
+  );
+  btnReset.addEventListener('click', () =>
+    socket.emit('sbr_control', { action: 'reset' })
+  );
+
+  // Update voortgang en highlight actieve fase
+  socket.on('sbr_timer', data => {
+    const { phase, phase_elapsed, phase_duration } = data;
+    if (!phases.includes(phase)) return;
+    progressElems[phase].textContent = `${phase_elapsed} / ${phase_duration} s`;
+    phases.forEach(p =>
+      boxes[p].classList.toggle('active', p === phase)
+    );
+  });
+</script>
 {% endblock %}
