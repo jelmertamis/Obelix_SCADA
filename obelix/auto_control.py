@@ -64,13 +64,25 @@ class SBRController:
 
     def start(self):
         if not self.start_event.is_set():
+            # Eerste keer starten: initialiseert fase en teller
             if self.current_phase is None:
                 self.current_phase = next(self._phase_cycle)
                 self.phase_elapsed = 0
                 self.timer = 0
+
+            # Activeer de cycle
             self.start_event.set()
             log("▶ START pressed")
             self._emit_status()
+
+            # Direct de juiste relaisstand toepassen voor de huidige fase
+            if self.current_phase == 'wait':
+                # In de wait-fase zet je alle AUTO-relais uit
+                self._auto_off_all()
+            else:
+                # In andere fases pas je de fase-logica toe
+                self._apply_phase(self.current_phase)
+
 
     def stop(self):
         if self.start_event.is_set():
@@ -85,7 +97,15 @@ class SBRController:
         self.current_phase = 'influent'
         self.phase_elapsed = 0
         log("🔄 RESET pressed — terug naar fase INFLUENT, 0s")
-        self._apply_phase('influent')
+
+        if self.start_event.is_set():
+            # Als de cycle draait, pas de normale fase-logica toe
+            self._apply_phase('influent')
+        else:
+            # Als gepauzeerd, zet alle AUTO-relais uit
+            self._auto_off_all()
+
+        # Status en timer naar de client sturen
         self._emit_status()
         self.socketio.emit('sbr_timer', {
             'timer':          0,
@@ -94,6 +114,7 @@ class SBRController:
             'phase_duration': self.influent_secs
         }, namespace='/sbr')
 
+    
     def _emit_status(self):
         self.socketio.emit('sbr_status', {'active': self.start_event.is_set()}, namespace='/sbr')
         self.socketio.emit('sbr_timer',  {'timer': self.timer},                          namespace='/sbr')
@@ -113,20 +134,27 @@ class SBRController:
 
     def _auto_off_all(self):
         inst = self.clients[self.r302_unit]
+        # Voor iedere R302-relay: indien in AUTO en nog niet OFF, zet uit
         for coil in Config.R302_RELAY_MAPPING:
             mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
-            if mode == 'AUTO' and get_relay_state(self.r302_unit, coil) != 'OFF':
+            current_state = get_relay_state(self.r302_unit, coil)
+            if mode == 'AUTO' and current_state != 'OFF':
                 with modbus_lock:
                     inst.write_bit(coil, False, functioncode=5)
                     save_relay_state(self.r302_unit, coil, 'OFF')
-                log(f"✖ AUTO relay {coil} off")
+
+                # Stuur update naar alle /relays-clients
                 self.socketio.emit('relay_toggled', {
                     'unit_idx': self.r302_unit,
                     'coil_idx': coil,
                     'state':    'OFF'
                 }, namespace='/relays')
+
+        # Na auto-off: stuur nieuwe status van alle R302-coils naar alle /r302-clients
         from obelix.r302_manager import R302Controller
-        self.socketio.emit('r302_update', R302Controller(self.r302_unit).get_status(), namespace='/r302')
+        status = R302Controller(self.r302_unit).get_status()
+        self.socketio.emit('r302_update', status, namespace='/r302')
+
 
     def _apply_phase(self, phase):
         # Bij 'wait' enkel alle relais uit
