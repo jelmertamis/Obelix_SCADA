@@ -183,8 +183,20 @@ def init_socketio(socketio):
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
+
+        # 1) Pauze/actief-status
         emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
-        emit('sbr_timer',  {'timer': ctrl.timer},               namespace='/sbr')
+
+        # 2) Fase-info met fallback voor None
+        phase = ctrl.current_phase or 'influent'
+        emit('sbr_timer', {
+            'timer':          ctrl.timer,
+            'phase':          phase,
+            'phase_elapsed':  ctrl.phase_elapsed,
+            'phase_duration': getattr(ctrl, f"{phase}_secs")
+        }, namespace='/sbr')
+
+        # 3) Setpoints
         ctrl._emit_phase_times()
 
     @socketio.on('sbr_control', namespace='/sbr')
