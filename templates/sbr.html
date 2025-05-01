@@ -62,6 +62,9 @@
 {% block content %}
 <section class="sbr-config" id="sbr-config-section">
   <h1>SBR Configuratie & Status</h1>
+  <div id="cycle-timer" style="font-size:1.2rem; margin-bottom:0.5rem;">
+    Cyclus: 00:00
+  </div>
   <div style="margin-top:0;">
     <button id="btn-toggle" class="phase-set-btn">Start Cycle</button>
     <button id="btn-reset"  class="phase-set-btn">Reset Cycle</button>
@@ -139,8 +142,17 @@
     document.getElementById('sbr-config-section').classList.toggle('paused', !data.active);
   });
 
+  const cycleTimerEl = document.getElementById('cycle-timer');
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60).toString().padStart(2,'0');
+    const s = (seconds % 60).toString().padStart(2,'0');
+    return `${m}:${s}`;
+}
+
   // Timerupdates
   socket.on('sbr_timer', data => {
+    cycleTimerEl.textContent = 'Cyclus: ' + formatTime(data.timer);
     const { phase, phase_elapsed } = data;
     if (!phases.includes(phase)) return;
     phases.forEach(p => elapsCont[p].classList.add('hidden'));

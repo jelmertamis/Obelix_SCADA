@@ -40,20 +40,18 @@ class SBRController:
         self.effluent_secs = int(self.effluent_time * 60)
         self.wait_secs     = int(self.wait_time     * 60)
 
-    def set_phase_times(self, infl_min, react_min, effl_min, wait_min=None):
+    def set_phase_times(self, infl_min, react_min, effl_min, wait_min):
         # Bewaar de eerste drie tijden
         set_setting('sbr_influent_time_minutes',  str(infl_min))
         set_setting('sbr_react_time_minutes',     str(react_min))
         set_setting('sbr_effluent_time_minutes',  str(effl_min))
-        # Bewaar de wait-tijd als die meegegeven is
-        if wait_min is not None:
-            set_setting('sbr_wait_time_minutes', str(wait_min))
-            self.wait_time = wait_min
-
+        set_setting('sbr_wait_time_minutes', str(wait_min))
+        
         # Update intern
         self.influent_time = infl_min
         self.react_time    = react_min
         self.effluent_time = effl_min
+        self.wait_time = wait_min
         self._update_phase_secs()
         log(
             f"⏱ Phasetijden ingesteld: Influent={self.influent_secs}s, "
@@ -75,14 +73,8 @@ class SBRController:
             log("▶ START pressed")
             self._emit_status()
 
-            # Direct de juiste relaisstand toepassen voor de huidige fase
-            if self.current_phase == 'wait':
-                # In de wait-fase zet je alle AUTO-relais uit
-                self._auto_off_all()
-            else:
-                # In andere fases pas je de fase-logica toe
-                self._apply_phase(self.current_phase)
-
+            # # Direct de juiste relaisstand toepassen voor de huidige fase
+            self._apply_phase(self.current_phase)
 
     def stop(self):
         if self.start_event.is_set():
@@ -117,7 +109,7 @@ class SBRController:
     
     def _emit_status(self):
         self.socketio.emit('sbr_status', {'active': self.start_event.is_set()}, namespace='/sbr')
-        self.socketio.emit('sbr_timer',  {'timer': self.timer},                          namespace='/sbr')
+        self.socketio.emit('sbr_timer',  {'timer': self.timer}, namespace='/sbr')
 
     def _emit_phase_times(self):
         data = {
@@ -220,7 +212,7 @@ class SBRController:
                 next_idx = (idx + 1) % len(phases)
                 self.current_phase = phases[next_idx]
                 self.phase_elapsed = 0
-                if phase == 'effluent':
+                if next_idx == 0:
                     # reset globale timer na effluent
                     self.timer = 0
 
