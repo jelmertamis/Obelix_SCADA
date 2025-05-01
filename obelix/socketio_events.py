@@ -144,36 +144,28 @@ def init_socketio(socketio):
         log("SocketIO: /r302 connected")
         emit('r302_init', r302_ctrl.get_status(), namespace='/r302')
 
-    @socketio.on('set_mode', namespace='/r302')
-    def ws_set_mode(msg):
-        coil, mode = msg['coil'], msg['mode']
-        # 1) Sla de nieuwe mode op
-        r302_ctrl.set_mode(coil, mode)
-
-        inst = get_clients()[r302_ctrl.unit]
-        # 2) Manual override: schrijf direct de gewenste staat
-        if mode == 'MANUAL_ON' or mode == 'MANUAL_OFF':
-            want_on = (mode == 'MANUAL_ON')
-            with modbus_lock:
-                inst.write_bit(coil, want_on, functioncode=5)
-                save_relay_state(r302_ctrl.unit, coil, 'ON' if want_on else 'OFF')
-            # Broadcast fysieke wijziging
-            emit('relay_toggled',
-                {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want_on else 'OFF'},
-                namespace='/relays', broadcast=True)
-            # Update alle clients met de nieuwe mode/status
+        @socketio.on('set_mode', namespace='/r302')
+        def ws_set_mode(msg):
+            coil, mode = msg['coil'], msg['mode']
+            r302_ctrl.set_mode(coil, mode)
+            inst = get_clients()[r302_ctrl.unit]
+            if mode in ('MANUAL_ON', 'MANUAL_OFF'):
+                want_on = (mode == 'MANUAL_ON')
+                with modbus_lock:
+                    inst.write_bit(coil, want_on, functioncode=5)
+                    save_relay_state(r302_ctrl.unit, coil, 'ON' if want_on else 'OFF')
+                emit('relay_toggled',
+                     {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want_on else 'OFF'},
+                     namespace='/relays', broadcast=True)
+                emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
+                return
             emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
-            return
-
-        # 3) Auto-modus: pas SBR-logica toe als de cycle actief is
-        emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
-        ctrl = auto_control.sbr_controller
-        if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
-            if ctrl.current_phase in ('react', 'wait'):
-                ctrl._auto_off_all()
-            else:
-                ctrl._apply_phase(ctrl.current_phase)
-
+            ctrl = auto_control.sbr_controller
+            if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
+                if ctrl.current_phase in ('react', 'wait'):
+                    ctrl._auto_off_all()
+                else:
+                    ctrl._apply_phase(ctrl.current_phase)
 
     # ----- SBR CYCLE -----
     @socketio.on('connect', namespace='/sbr')
@@ -190,28 +182,40 @@ def init_socketio(socketio):
         # 2) Fase-info met fallback voor None
         phase = ctrl.current_phase or 'influent'
         emit('sbr_timer', {
-            'timer':          ctrl.timer,
-            'phase':          phase,
-            'phase_elapsed':  ctrl.phase_elapsed,
-            'phase_duration': getattr(ctrl, f"{phase}_secs")
+            'timer':         ctrl.timer,
+            'phase':         phase,
+            'phase_elapsed': ctrl.phase_elapsed,
+            'phase_target':  ctrl.phase_end_conditions.get(phase, 0)
         }, namespace='/sbr')
 
         # 3) Setpoints
         ctrl._emit_phase_times()
 
+ 
     @socketio.on('sbr_control', namespace='/sbr')
     def ws_sbr_control(msg):
         ctrl = auto_control.sbr_controller
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
+
         action = msg.get('action')
         if action == 'toggle':
-            ctrl.stop() if ctrl.start_event.is_set() else ctrl.start()
+            if ctrl.start_event.is_set():
+                ctrl.stop()
+            else:
+                ctrl.start()
+            # direct status doorgeven zodat de balk kleurt
+            emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
+
         elif action == 'reset':
             ctrl.reset()
+            # na reset opnieuw status sturen
+            emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
+
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
+
 
     @socketio.on('sbr_set_phase_times', namespace='/sbr')
     def ws_sbr_set_phase_times(msg):
@@ -220,13 +224,28 @@ def init_socketio(socketio):
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
         try:
-            infl  = float(msg.get('influent',  ctrl.influent_time))
-            react = float(msg.get('react',     ctrl.react_time))
-            effl  = float(msg.get('effluent',  ctrl.effluent_time))
-            wait  = float(msg.get('wait',      ctrl.wait_time))
-            if infl <= 0 or react <= 0 or effl <= 0 or wait <= 0:
-                raise ValueError("Alle tijden moeten > 0 zijn")
-            ctrl.set_phase_times(infl, react, effl, wait)
+            # Lees alleen de fases die de client heeft aangepast
+            updates = {}
+            for key in ('influent', 'react', 'effluent', 'wait'):
+                if key in msg:
+                    val = float(msg[key])
+                    if val <= 0:
+                        raise ValueError(f"Tijd voor {key} moet > 0 zijn")
+                    updates[key] = val
+
+            # Sla nieuwe fasetijden op
+            ctrl.set_phase_times(
+                updates.get('influent',  ctrl.influent_time),
+                updates.get('react',     ctrl.react_time),
+                updates.get('effluent',  ctrl.effluent_time),
+                updates.get('wait',      ctrl.wait_time)
+            )
+
+            # Als de lopende fase is aangepast, update direct de end_condition
+            current = ctrl.current_phase or 'influent'
+            if current in updates:
+                ctrl.phase_end_condition = ctrl.phase_end_conditions[current]
+
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 

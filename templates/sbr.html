@@ -62,23 +62,32 @@
 {% block content %}
 <section class="sbr-config" id="sbr-config-section">
   <h1>SBR Configuratie & Status</h1>
+
+  <!-- Globale cycle-timer -->
   <div id="cycle-timer" style="font-size:1.2rem; margin-bottom:0.5rem;">
     Cyclus: 00:00
   </div>
+
+  <!-- Start/Stop/Reset knoppen -->
   <div style="margin-top:0;">
     <button id="btn-toggle" class="phase-set-btn">Start Cycle</button>
     <button id="btn-reset"  class="phase-set-btn">Reset Cycle</button>
   </div>
+
+  <!-- Fase-overzicht -->
   <div class="sbr-phase-list">
     {% for key,label in [('influent','Influent'),('react','React'),('effluent','Effluent'),('wait','Wait')] %}
     <div class="phase-box" id="phase-{{ key }}-box">
       <div class="phase-name">{{ label }}</div>
       <div class="phase-progress">
+        <!-- Verstreken tijd -->
         <span class="phase-elapsed-container hidden" id="{{ key }}-elapsed-container">
           <span class="phase-elapsed" id="{{ key }}-elapsed"></span> /
         </span>
+        <!-- Totaal doel (phase_target) -->
         <span class="phase-total" id="{{ key }}-total"></span> s
       </div>
+      <!-- Input voor setpoint in minuten -->
       <input type="number" step="0.1" min="0.1"
              class="phase-input" id="{{ key }}-input" placeholder="min">
       <button class="phase-set-btn" data-phase="{{ key }}">Set</button>
@@ -91,30 +100,44 @@
 {% block scripts %}
 <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
 <script>
-  // Automatisch verbinden en handlers registreren
   const socket = io('/sbr');
   const phases = ['influent','react','effluent','wait'];
-  const boxes = {}, elapsCont = {}, elapsedElems = {}, totalElems = {}, inputElems = {}, setBtns = {};
 
-  // Element-referenties en events
+  // Element-referenties
+  const boxes        = {}, 
+        elapsCont    = {}, 
+        elapsedElems = {}, 
+        totalElems   = {}, 
+        inputElems   = {}, 
+        setBtns      = {};
+
   phases.forEach(p => {
-    boxes[p] = document.getElementById(`phase-${p}-box`);
-    elapsCont[p] = document.getElementById(`${p}-elapsed-container`);
+    boxes[p]        = document.getElementById(`phase-${p}-box`);
+    elapsCont[p]    = document.getElementById(`${p}-elapsed-container`);
     elapsedElems[p] = document.getElementById(`${p}-elapsed`);
-    totalElems[p] = document.getElementById(`${p}-total`);
-    inputElems[p] = document.getElementById(`${p}-input`);
-    setBtns[p] = document.querySelector(`.phase-set-btn[data-phase="${p}"]`);
+    totalElems[p]   = document.getElementById(`${p}-total`);
+    inputElems[p]   = document.getElementById(`${p}-input`);
+    setBtns[p]      = document.querySelector(`.phase-set-btn[data-phase="${p}"]`);
 
+    // Set-knop per fase
     setBtns[p].addEventListener('click', () => {
       const val = parseFloat(inputElems[p].value);
-      if (isNaN(val) || val <= 0) return alert(`Tijd voor ${p} moet groter zijn dan 0`);
+      if (isNaN(val) || val <= 0) {
+        return alert(`Tijd voor ${p} moet groter zijn dan 0`);
+      }
+      // Stuur alleen de gewijzigde fase
       socket.emit('sbr_set_phase_times', { [p]: val });
     });
+
     inputElems[p].addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); setBtns[p].click(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        setBtns[p].click();
+      }
     });
   });
 
+  // Toggle en reset
   document.getElementById('btn-toggle').addEventListener('click', () =>
     socket.emit('sbr_control', { action: 'toggle' })
   );
@@ -122,43 +145,61 @@
     socket.emit('sbr_control', { action: 'reset' })
   );
 
-  // Bij connect: vraag instellingen opnieuw op
+  // Cycle-timer formatter
+  const cycleTimerEl = document.getElementById('cycle-timer');
+  function formatTime(sec) {
+    const m = String(Math.floor(sec/60)).padStart(2,'0');
+    const s = String(sec%60).padStart(2,'0');
+    return `${m}:${s}`;
+  }
+
+  // Bij connect: vraag fase-instellingen
   socket.on('connect', () => {
     socket.emit('sbr_get_phase_times');
   });
 
-  // Ontvang instellingsdata
+  // Init setpoints en totale duur
   socket.on('sbr_phase_times', data => {
     phases.forEach(p => {
+      // hide elapsed containers
       elapsCont[p].classList.add('hidden');
-      totalElems[p].textContent = data[p + '_seconds'];
+      // vul input en totaal (in seconden) via data.<fase>_seconds
       inputElems[p].value = data[p + '_minutes'];
+      totalElems[p].textContent = data[p + '_seconds'];
     });
   });
 
-  // Status (start/pauze)
+  // Start/Pauze knopstatus
   socket.on('sbr_status', data => {
-    document.getElementById('btn-toggle').textContent = data.active ? 'Stop Cycle' : 'Start Cycle';
-    document.getElementById('sbr-config-section').classList.toggle('paused', !data.active);
+    document.getElementById('btn-toggle').textContent =
+      data.active ? 'Stop Cycle' : 'Start Cycle';
+    document.getElementById('sbr-config-section')
+            .classList.toggle('paused', !data.active);
   });
 
-  const cycleTimerEl = document.getElementById('cycle-timer');
-
-  function formatTime(seconds) {
-    const m = Math.floor(seconds / 60).toString().padStart(2,'0');
-    const s = (seconds % 60).toString().padStart(2,'0');
-    return `${m}:${s}`;
-}
-
-  // Timerupdates
+  // Live timer‐updates
   socket.on('sbr_timer', data => {
+    // 1) Globale cycle‐timer
     cycleTimerEl.textContent = 'Cyclus: ' + formatTime(data.timer);
-    const { phase, phase_elapsed } = data;
+
+    // 2) per-fase elapsed en target
+    const { phase, phase_elapsed, phase_target } = data;
     if (!phases.includes(phase)) return;
+
+    // hide all elapsed
     phases.forEach(p => elapsCont[p].classList.add('hidden'));
+
+    // show elapsed for active
     elapsedElems[phase].textContent = phase_elapsed;
     elapsCont[phase].classList.remove('hidden');
-    phases.forEach(p => boxes[p].classList.toggle('active', p === phase));
+
+    // show target (phase_target)
+    totalElems[phase].textContent = phase_target;
+
+    // 3) highlight actieve fase
+    phases.forEach(p =>
+      boxes[p].classList.toggle('active', p === phase)
+    );
   });
 </script>
 {% endblock %}

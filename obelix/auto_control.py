@@ -21,30 +21,36 @@ class SBRController:
         self._phase_cycle  = itertools.cycle(['influent', 'react', 'effluent', 'wait'])
         self.current_phase = None
         self.phase_elapsed = 0
+        self.phase_end_conditions = {}
+
 
         # Laad fasetijden (in minuten) uit DB, met fallback
-        base = get_setting('sbr_cycle_time_minutes', '1.66667')
+        base = get_setting('sbr_cycle_time_minutes', '7')
         self.influent_time = float(get_setting('sbr_influent_time_minutes') or base)
         self.react_time    = float(get_setting('sbr_react_time_minutes')    or base)
         self.effluent_time = float(get_setting('sbr_effluent_time_minutes') or base)
         self.wait_time     = float(get_setting('sbr_wait_time_minutes')     or '0.5')
-        self._update_phase_secs()
+        self._update_phase_end_conditions()
 
         # Init UI: status en alle AUTO-relays uit
         self._emit_status()
         self._auto_off_all()
 
-    def _update_phase_secs(self):
-        self.influent_secs = int(self.influent_time * 60)
-        self.react_secs    = int(self.react_time    * 60)
-        self.effluent_secs = int(self.effluent_time * 60)
-        self.wait_secs     = int(self.wait_time     * 60)
+    def _update_phase_end_conditions(self):
+        """Stelt per fase de end-condition in (nu in seconden)."""
+        self.phase_end_conditions = {
+            'influent': int(self.influent_time * 60),
+            'react':    int(self.react_time    * 60),
+            'effluent': int(self.effluent_time * 60),
+            'wait':     int(self.wait_time     * 60),
+    }
+
 
     def set_phase_times(self, infl_min, react_min, effl_min, wait_min):
         # Bewaar de eerste drie tijden
-        set_setting('sbr_influent_time_minutes',  str(infl_min))
-        set_setting('sbr_react_time_minutes',     str(react_min))
-        set_setting('sbr_effluent_time_minutes',  str(effl_min))
+        set_setting('sbr_influent_time_minutes', str(infl_min))
+        set_setting('sbr_react_time_minutes', str(react_min))
+        set_setting('sbr_effluent_time_minutes', str(effl_min))
         set_setting('sbr_wait_time_minutes', str(wait_min))
         
         # Update intern
@@ -52,11 +58,14 @@ class SBRController:
         self.react_time    = react_min
         self.effluent_time = effl_min
         self.wait_time = wait_min
-        self._update_phase_secs()
+        self._update_phase_end_conditions()
+
         log(
-            f"⏱ Phasetijden ingesteld: Influent={self.influent_secs}s, "
-            f"React={self.react_secs}s, Effluent={self.effluent_secs}s, "
-            f"Wait={self.wait_secs}s"
+            f"⏱ Phasetijden ingesteld:" 
+            f"Influent={self.phase_end_conditions['influent']}s, "
+            f"React={self.phase_end_conditions['react']}s, "
+            f"Effluent={self.phase_end_conditions['effluent']}s, "
+            f"Wait={self.phase_end_conditions['wait']}s"
         )
         self._emit_phase_times()
 
@@ -103,7 +112,7 @@ class SBRController:
             'timer':          0,
             'phase':          'influent',
             'phase_elapsed':  0,
-            'phase_duration': self.influent_secs
+            'phase_target': self.phase_end_conditions['influent']
         }, namespace='/sbr')
 
     
@@ -114,13 +123,13 @@ class SBRController:
     def _emit_phase_times(self):
         data = {
             'influent_minutes': self.influent_time,
-            'influent_seconds': self.influent_secs,
+            'influent_seconds': self.phase_end_conditions['influent'],
             'react_minutes':    self.react_time,
-            'react_seconds':    self.react_secs,
+            'react_seconds':    self.phase_end_conditions['react'],
             'effluent_minutes': self.effluent_time,
-            'effluent_seconds': self.effluent_secs,
+            'effluent_seconds': self.phase_end_conditions['effluent'],
             'wait_minutes':     self.wait_time,
-            'wait_seconds':     self.wait_secs
+            'wait_seconds':     self.phase_end_conditions['wait'],
         }
         self.socketio.emit('sbr_phase_times', data, namespace='/sbr')
 
@@ -185,29 +194,27 @@ class SBRController:
             if not self.start_event.is_set():
                 continue
 
-            # Bepaal huidige fase
             phase = self.current_phase or phases[0]
-
-            # Fase-init bij eerste seconde
+            
+            # Bepaal huidige fase
             if self.phase_elapsed == 0:
-                if phase == 'wait':
-                    self._auto_off_all()
-                else:
-                    self._apply_phase(phase)
+                # bepaal end_condition uit de mapping
+                self.phase_end_condition = self.phase_end_conditions[phase]
+                self._apply_phase(phase)
 
             # Tellers updaten
             self.phase_elapsed += 1
             self.timer += 1
-            secs = getattr(self, f"{phase}_secs")
+
             self.socketio.emit('sbr_timer', {
                 'timer':          self.timer,
                 'phase':          phase,
                 'phase_elapsed':  self.phase_elapsed,
-                'phase_duration': secs
+                'phase_target':   self.phase_end_condition
             }, namespace='/sbr')
 
             # Als fase klaar, ga naar volgende
-            if self.phase_elapsed >= secs:
+            if self.phase_elapsed >= self.phase_end_condition:
                 idx = phases.index(phase)
                 next_idx = (idx + 1) % len(phases)
                 self.current_phase = phases[next_idx]
