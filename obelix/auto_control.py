@@ -188,20 +188,52 @@ class SBRController:
         sbr_controller = self
         log("▶ SBR thread started")
         phases = ['influent', 'react', 'effluent', 'wait']
-
+        
         while True:
-            self.socketio.sleep(1)
+            # Eerst check of de cyclus actief is
             if not self.start_event.is_set():
+                self.socketio.sleep(1)
+                continue
+            
+            phase = self.current_phase or phases[0]
+            end_condition = self.phase_end_conditions[phase]
+
+            # 1) Check of de fase nog loopt
+            if self.phase_elapsed >= end_condition:
+                # a) fase voorbij → direct wisselen
+                idx       = phases.index(phase)
+                next_idx  = (idx + 1) % len(phases)
+                next_phase = phases[next_idx]
+
+                # reset fase‐teller
+                self.phase_elapsed = 0
+                # reset cycle‐timer alleen bij wrap naar eerste fase
+                if next_idx == 0:
+                    self.timer = 0
+                self.current_phase = next_phase
+
+                # zet meteen de relais voor de nieuwe fase
+                if self.phase_end_conditions[next_phase] > 0:
+                    self._apply_phase(next_phase)
+
+                # emit direct update met elapsed=0
+                self.socketio.emit('sbr_timer', {
+                    'timer':         self.timer,
+                    'phase':         next_phase,
+                    'phase_elapsed': 0,
+                    'phase_target':  self.phase_end_conditions[next_phase]
+                }, namespace='/sbr')
+
+                # sla sleep en increment over
                 continue
 
-            phase = self.current_phase or phases[0]
-            
-            # Bepaal huidige fase
+            # 2) Fase loopt nog → zet relais
             if self.phase_elapsed == 0:
-                # bepaal end_condition uit de mapping
-                self.phase_end_condition = self.phase_end_conditions[phase]
                 self._apply_phase(phase)
 
+
+            self.socketio.sleep(1)
+            
             # Tellers updaten
             self.phase_elapsed += 1
             self.timer += 1
@@ -210,18 +242,10 @@ class SBRController:
                 'timer':          self.timer,
                 'phase':          phase,
                 'phase_elapsed':  self.phase_elapsed,
-                'phase_target':   self.phase_end_condition
+                'phase_target':   end_condition
             }, namespace='/sbr')
 
-            # Als fase klaar, ga naar volgende
-            if self.phase_elapsed >= self.phase_end_condition:
-                idx = phases.index(phase)
-                next_idx = (idx + 1) % len(phases)
-                self.current_phase = phases[next_idx]
-                self.phase_elapsed = 0
-                if next_idx == 0:
-                    # reset globale timer na effluent
-                    self.timer = 0
+            
 
 def start_sbr_controller(socketio: SocketIO):
     global sbr_controller
