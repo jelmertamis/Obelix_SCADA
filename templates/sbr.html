@@ -1,3 +1,4 @@
+<!-- templates/sbr.html -->
 {% extends 'base.html' %}
 
 {% block title %}SBR Configuratie & Status{% endblock %}
@@ -13,7 +14,7 @@
   }
   .sbr-phase-list {
     width: 100%;
-    max-width: 600px;
+    max-width: 700px;
     margin-top: 1rem;
     display: flex;
     flex-direction: column;
@@ -21,17 +22,16 @@
   }
   .phase-box {
     display: grid;
-    grid-template-columns: 
-      1fr           /* naam */
-      auto          /* actuele waarde / tijd */
-      auto          /* target waarde / tijd */
-      auto          /* input */
-      auto          /* set-knop */;
+    grid-template-columns:
+      2fr   /* Naam */
+      1fr   /* Criterion */
+      1fr   /* Actueel */
+      1fr   /* Doel */
+      2fr   /* Invoer + knop */;
     align-items: center;
     background: #f9f9f9;
     padding: 0.75rem 1rem;
     border-radius: 0.5rem;
-    font-size: 1rem;
     gap: 0.5rem;
     transition: background 0.3s;
   }
@@ -41,18 +41,18 @@
     color: #333;
   }
   .phase-name { font-weight: bold; }
-  .phase-value { text-align: right; min-width: 5rem; }
-  .phase-progress { text-align: right; min-width: 5rem; }
+  .phase-criterion,
+  .phase-actual,
+  .phase-target { text-align: center; }
   .phase-input {
     width: 4rem;
     padding: 0.3rem;
-    font-size: 0.9rem;
     border: 1px solid #ccc;
     border-radius: 0.25rem;
+    margin-right: 0.5rem;
   }
   .phase-set-btn {
     padding: 0.6rem 1rem;
-    font-size: 0.9rem;
     border: none;
     border-radius: 0.25rem;
     background: #007bff;
@@ -67,53 +67,37 @@
 <section class="sbr-config" id="sbr-config-section">
   <h1>SBR Configuratie & Status</h1>
 
-  <!-- Globale cycle-timer -->
   <div id="cycle-timer" style="font-size:1.2rem; margin-bottom:0.5rem;">
     Cyclus: 00:00
   </div>
-
-  <!-- Start/Stop/Reset knoppen -->
   <div style="margin-bottom:1rem;">
     <button id="btn-toggle" class="phase-set-btn">Start Cycle</button>
     <button id="btn-reset"  class="phase-set-btn">Reset Cycle</button>
   </div>
 
-  <!-- Fase-overzicht -->
   <div class="sbr-phase-list">
-    {% for key,label in [('influent','Influent'),('react','React'),('effluent','Effluent'),('wait','Wait')] %}
+    {% for key,label in [
+         ('influent','Influent'),
+         ('react','React'),
+         ('effluent','Effluent'),
+         ('wait','Wait')
+       ] %}
     <div class="phase-box" id="phase-{{ key }}-box">
       <div class="phase-name">{{ label }}</div>
-
-      {% if key == 'influent' %}
-        <!-- Actual en target voor level-based fase -->
-        <div class="phase-value">
-          <span id="influent-actual">--</span>
-        </div>
-        <div class="phase-value">
-          <span id="influent-threshold-display">--</span>
-        </div>
-      {% else %}
-        <!-- Tijd-gestuurde fases: elapsed / target -->
-        <div class="phase-progress" id="{{ key }}-elapsed-container">
-          <span id="{{ key }}-elapsed">0</span> / 
-          <span id="{{ key }}-total">0</span> s
-        </div>
-        <div></div>
-      {% endif %}
-
-      <!-- Input voor fasetijd of threshold -->
-      {% if key == 'influent' %}
-        <input type="number" step="0.1" min="0"
-               class="phase-input" id="influent-threshold-input" placeholder="Setpoint">
-      {% else %}
-        <input type="number" step="0.1" min="0"
-               class="phase-input" id="{{ key }}-input" placeholder="min">
-      {% endif %}
-
-      <button class="phase-set-btn"
-              id="{% if key=='influent' %}btn-set-threshold{% else %}btn-set-{{ key }}{% endif %}">
-        {% if key=='influent' %}Set Level{% else %}Set{% endif %}
-      </button>
+      <div class="phase-criterion">
+        {{ 'Level' if key=='influent' else 'Time' }}
+      </div>
+      <div class="phase-actual" id="{{ key }}-actual">--</div>
+      <div class="phase-target" id="{{ key }}-target">--</div>
+      <div>
+        <input
+          type="number" step="0.1" min="0"
+          class="phase-input"
+          id="{{ key }}-input"
+          placeholder="{{ 'Set level' if key=='influent' else 'min' }}"
+        >
+        <button class="phase-set-btn" id="btn-set-{{ key }}">Set</button>
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -126,89 +110,82 @@
   const socket = io('/sbr');
   const phases = ['influent','react','effluent','wait'];
 
-  // Elementen cache
-  const boxes      = {};
-  const actualEl   = document.getElementById('influent-actual');
-  const targetEl   = document.getElementById('influent-threshold-display');
-  const threshIn   = document.getElementById('influent-threshold-input');
-  const btnThresh  = document.getElementById('btn-set-threshold');
-  const elapsedEl  = {};
-  const totalEl    = {};
-  const inputEl    = {};
-  const btnSet     = {};
+  const cycleTimer = document.getElementById('cycle-timer');
+  const btnToggle  = document.getElementById('btn-toggle');
+  const btnReset   = document.getElementById('btn-reset');
+
+  const boxes     = {}, actual = {}, target = {}, inputs = {}, btns = {};
 
   phases.forEach(p => {
-    boxes[p]      = document.getElementById(`phase-${p}-box`);
-    if (p !== 'influent') {
-      elapsedEl[p] = document.getElementById(`${p}-elapsed`);
-      totalEl[p]   = document.getElementById(`${p}-total`);
-      inputEl[p]   = document.getElementById(`${p}-input`);
-      btnSet[p]    = document.getElementById(`btn-set-${p}`);
-      btnSet[p].addEventListener('click', () => {
-        const v = parseFloat(inputEl[p].value);
-        if (isNaN(v) || v<0) return alert(`Tijd voor ${p} moet ≥ 0 zijn`);
-        socket.emit('sbr_set_phase_times', { [p]: v });
-      });
-    }
-  });
-
-  // Start / Reset
-  document.getElementById('btn-toggle')
-    .addEventListener('click', () => socket.emit('sbr_control',{action:'toggle'}));
-  document.getElementById('btn-reset')
-    .addEventListener('click', () => socket.emit('sbr_control',{action:'reset'}));
-
-  // Set level-threshold
-  btnThresh.addEventListener('click', () => {
-    const v = parseFloat(threshIn.value);
-    if (isNaN(v) || v<0) return alert('Threshold moet ≥ 0 zijn');
-    socket.emit('sbr_set_threshold', { threshold: v });
-  });
-
-  // Handlers
-  socket.on('sbr_threshold_updated', data => {
-    targetEl.textContent = data.threshold;
-    threshIn.value = data.threshold;
-  });
-
-  socket.on('sbr_timer', data => {
-    // Highlight actieve fase
-    phases.forEach(p => boxes[p].classList.toggle('active', p === data.phase));
-
-    if (data.phase === 'influent') {
-      // toon actual level en target
-      if (data.actual_level != null) {
-        actualEl.textContent = data.actual_level.toFixed(2);
+    boxes[p]  = document.getElementById(`phase-${p}-box`);
+    actual[p] = document.getElementById(`${p}-actual`);
+    target[p] = document.getElementById(`${p}-target`);
+    inputs[p] = document.getElementById(`${p}-input`);
+    btns[p]   = document.getElementById(`btn-set-${p}`);
+    btns[p].addEventListener('click', () => {
+      const v = inputs[p].valueAsNumber;
+      if (isNaN(v) || v < 0) {
+        return alert((p==='influent'?'Level':'Time') + ' must be ≥ 0');
       }
-      targetEl.textContent = data.phase_target;
-    } else {
-      // toon elapsed / total seconden
-      elapsedEl[data.phase].textContent = data.phase_elapsed;
-      totalEl[data.phase].textContent   = data.phase_target;
-    }
-    // Update globale timer
-    const m = String(Math.floor(data.timer/60)).padStart(2,'0');
-    const s = String(data.timer%60).padStart(2,'0');
-    document.getElementById('cycle-timer').textContent = `Cyclus: ${m}:${s}`;
+      if (p === 'influent') {
+        socket.emit('sbr_set_threshold', { threshold: v });
+      } else {
+        socket.emit('sbr_set_phase_times', { [p]: v });
+      }
+    });
+  });
+
+  btnToggle.addEventListener('click', () =>
+    socket.emit('sbr_control', { action: 'toggle' })
+  );
+  btnReset.addEventListener('click', () =>
+    socket.emit('sbr_control', { action: 'reset' })
+  );
+
+  socket.on('connect', () => {
+    socket.emit('sbr_get_phase_times');
   });
 
   socket.on('sbr_phase_times', data => {
-    // init voor tijdgestuurde fases
-    phases.filter(p => p!=='influent').forEach(p => {
-      inputEl[p].value = data[p+'_minutes'];
-      totalEl[p].textContent = data[p+'_seconds'];
+    // influent = threshold
+    target['influent'].textContent = data.influent_threshold;
+    inputs['influent'].value       = data.influent_threshold;
+    // tijd-fases
+    ['react','effluent','wait'].forEach(p => {
+      inputs[p].value       = data[`${p}_minutes`];
+      target[p].textContent = data[`${p}_seconds`];
     });
   });
 
   socket.on('sbr_status', data => {
-    document.getElementById('btn-toggle').textContent =
-      data.active ? 'Stop Cycle' : 'Start Cycle';
-    document.getElementById('sbr-config-section')
-            .classList.toggle('paused', !data.active);
+    btnToggle.textContent = data.active ? 'Stop Cycle' : 'Start Cycle';
+    document
+      .getElementById('sbr-config-section')
+      .classList.toggle('paused', !data.active);
   });
 
-  socket.on('connect', () => {
-    socket.emit('sbr_get_phase_times');
+  socket.on('sbr_timer', data => {
+    // update globale timer
+    const m = String(Math.floor(data.timer/60)).padStart(2,'0'),
+          s = String(data.timer%60).padStart(2,'0');
+    cycleTimer.textContent = `Cyclus: ${m}:${s}`;
+
+    // update fase rows
+    phases.forEach(p => {
+      boxes[p].classList.toggle('active', p === data.phase);
+      if (p === 'influent') {
+        actual[p].textContent = data.actual_level != null
+          ? data.actual_level.toFixed(2) : '--';
+      } else {
+        actual[p].textContent = p === data.phase
+          ? data.phase_elapsed : '0';
+      }
+    });
+
+    // **zorg dat setpoint (phase_target) ook zichtbaar blijft**
+    if (data.phase_target !== undefined) {
+      target[data.phase].textContent = data.phase_target;
+    }
   });
 </script>
 {% endblock %}

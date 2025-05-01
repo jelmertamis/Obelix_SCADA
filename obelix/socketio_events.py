@@ -5,17 +5,17 @@ from obelix.config import Config
 from obelix.database import (
     get_setting, set_setting, get_all_calibrations,
     get_relay_state, save_relay_state,
-    get_aio_setting, save_aio_setting,
-    get_calibration, save_calibration
+    get_calibration, save_calibration,
+    get_dummy_value, get_aio_setting
 )
 from obelix.modbus_client import (
-    get_clients, fallback_mode, read_relay_states, modbus_lock
+    get_clients, fallback_mode,
+    read_relay_states, modbus_lock
 )
 from obelix.utils import log
 from obelix.r302_manager import R302Controller
 from obelix import auto_control
 
-# Gedeelde R302-controller voor status en modes
 r302_ctrl = R302Controller(unit_index=0)
 
 def init_socketio(socketio):
@@ -29,11 +29,10 @@ def init_socketio(socketio):
             if unit['type'] == 'relay':
                 try:
                     states = read_relay_states(i)
-                    for coil, actual in enumerate(states):
-                        if not fallback_mode:
-                            saved = get_relay_state(i, coil)
+                    if not fallback_mode:
+                        for coil, actual in enumerate(states):
                             state_str = 'ON' if actual else 'OFF'
-                            if saved != state_str:
+                            if get_relay_state(i, coil) != state_str:
                                 save_relay_state(i, coil, state_str)
                     item = {'idx': i, 'name': unit['name'], 'states': states}
                     if i == r302_ctrl.unit:
@@ -46,8 +45,8 @@ def init_socketio(socketio):
 
     @socketio.on('toggle_relay', namespace='/relays')
     def ws_toggle_relay(msg):
+        idx, coil, want = msg['unit_idx'], msg['coil_idx'], msg['state']
         try:
-            idx, coil, want = msg['unit_idx'], msg['coil_idx'], msg['state']
             inst = get_clients()[idx]
             with modbus_lock:
                 inst.write_bit(coil, want == 'ON', functioncode=5)
@@ -115,7 +114,7 @@ def init_socketio(socketio):
                     'channel': ch,
                     'raw_out': 0,
                     'phys_out': 0.0,
-                    'percent_out': get_aio_setting(ch)
+                    'percent_out': None
                 })
         emit('aio_init', rows, namespace='/aio')
 
@@ -123,12 +122,12 @@ def init_socketio(socketio):
     def ws_aio_set(msg):
         try:
             ch, pct = msg['channel'], float(msg['percent'])
-            mA = 4.0 + pct / 100.0 * 16.0
-            raw = int((mA / 20.0) * 4095)
+            mA = 4.0 + pct/100.0*16.0
+            raw = int((mA/20.0)*4095)
             inst = get_clients()[Config.AIO_IDX]
             with modbus_lock:
                 inst.write_register(ch, raw, functioncode=6)
-            save_aio_setting(ch, pct)
+            set_setting(f'aio_setting_{ch}', pct)
             emit('aio_updated', {
                 'channel': ch,
                 'raw_out': raw,
@@ -150,18 +149,18 @@ def init_socketio(socketio):
             r302_ctrl.set_mode(coil, mode)
             inst = get_clients()[r302_ctrl.unit]
             if mode in ('MANUAL_ON', 'MANUAL_OFF'):
-                want_on = (mode == 'MANUAL_ON')
+                want = (mode == 'MANUAL_ON')
                 with modbus_lock:
-                    inst.write_bit(coil, want_on, functioncode=5)
-                    save_relay_state(r302_ctrl.unit, coil, 'ON' if want_on else 'OFF')
+                    inst.write_bit(coil, want, functioncode=5)
+                    save_relay_state(r302_ctrl.unit, coil, 'ON' if want else 'OFF')
                 emit('relay_toggled',
-                     {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want_on else 'OFF'},
+                     {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want else 'OFF'},
                      namespace='/relays', broadcast=True)
                 emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
                 return
             emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
             ctrl = auto_control.sbr_controller
-            if ctrl and ctrl.start_event.is_set() and ctrl.current_phase:
+            if ctrl and ctrl.start_event.is_set():
                 if ctrl.current_phase in ('react', 'wait'):
                     ctrl._auto_off_all()
                 else:
@@ -176,22 +175,45 @@ def init_socketio(socketio):
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
 
-        # Pauze/actief-status
+        # 1) Start/stop-status
         emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
 
-        # Fase-informatie
+        # 2) Huidige timer en phase (zonder actual_level)
         phase = ctrl.current_phase or 'influent'
         emit('sbr_timer', {
             'timer':         ctrl.timer,
             'phase':         phase,
             'phase_elapsed': ctrl.phase_elapsed,
-            'phase_target':  ctrl._get_phase_target(phase)
+            'phase_target':  ctrl._get_phase_target(phase),
+            'actual_level':  None
         }, namespace='/sbr')
 
-        # Setpoints en threshold
-        ctrl._emit_phase_times()
-        threshold = float(get_setting('sbr_influent_level_threshold', '0'))
-        emit('sbr_threshold_updated', {'threshold': threshold}, namespace='/sbr')
+        # 3) Setpoints & threshold
+        emit('sbr_phase_times', {
+            'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
+            'react_minutes':      ctrl.react_time,
+            'react_seconds':      ctrl._get_phase_target('react'),
+            'effluent_minutes':   ctrl.effluent_time,
+            'effluent_seconds':   ctrl._get_phase_target('effluent'),
+            'wait_minutes':       ctrl.wait_time,
+            'wait_seconds':       ctrl._get_phase_target('wait'),
+        }, namespace='/sbr')
+
+    @socketio.on('sbr_get_phase_times', namespace='/sbr')
+    def ws_sbr_get_phase_times():
+        ctrl = auto_control.sbr_controller
+        if not ctrl:
+            emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
+            return
+        emit('sbr_phase_times', {
+            'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
+            'react_minutes':      ctrl.react_time,
+            'react_seconds':      ctrl._get_phase_target('react'),
+            'effluent_minutes':   ctrl.effluent_time,
+            'effluent_seconds':   ctrl._get_phase_target('effluent'),
+            'wait_minutes':       ctrl.wait_time,
+            'wait_seconds':       ctrl._get_phase_target('wait'),
+        }, namespace='/sbr')
 
     @socketio.on('sbr_control', namespace='/sbr')
     def ws_sbr_control(msg):
@@ -199,17 +221,33 @@ def init_socketio(socketio):
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
-
         action = msg.get('action')
         if action == 'toggle':
-            if ctrl.start_event.is_set():
-                ctrl.stop()
-            else:
-                ctrl.start()
+            if ctrl.start_event.is_set(): ctrl.stop()
+            else:                         ctrl.start()
             emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
+            # her-stuur thresholds/tijden
+            emit('sbr_phase_times', {
+                'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
+                'react_minutes':      ctrl.react_time,
+                'react_seconds':      ctrl._get_phase_target('react'),
+                'effluent_minutes':   ctrl.effluent_time,
+                'effluent_seconds':   ctrl._get_phase_target('effluent'),
+                'wait_minutes':       ctrl.wait_time,
+                'wait_seconds':       ctrl._get_phase_target('wait'),
+            }, namespace='/sbr')
         elif action == 'reset':
             ctrl.reset()
             emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
+            emit('sbr_phase_times', {
+                'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
+                'react_minutes':      ctrl.react_time,
+                'react_seconds':      ctrl._get_phase_target('react'),
+                'effluent_minutes':   ctrl.effluent_time,
+                'effluent_seconds':   ctrl._get_phase_target('effluent'),
+                'wait_minutes':       ctrl.wait_time,
+                'wait_seconds':       ctrl._get_phase_target('wait'),
+            }, namespace='/sbr')
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
 
@@ -221,31 +259,50 @@ def init_socketio(socketio):
             return
         try:
             updates = {}
-            for key in ('influent', 'react', 'effluent', 'wait'):
+            for key in ('react','effluent','wait'):
                 if key in msg:
-                    val = float(msg[key])
-                    if val < 0:
-                        raise ValueError(f"Tijd voor {key} moet positief zijn")
-                    updates[key] = val
+                    v = float(msg[key])
+                    if v < 0:
+                        raise ValueError(f"Tijd voor {key} moet ≥ 0 zijn")
+                    updates[key] = v
             ctrl.set_phase_times(
-                updates.get('influent', ctrl.influent_time),
+                ctrl.influent_time,
                 updates.get('react',    ctrl.react_time),
                 updates.get('effluent', ctrl.effluent_time),
                 updates.get('wait',     ctrl.wait_time)
             )
+            emit('sbr_phase_times', {
+                'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
+                'react_minutes':      ctrl.react_time,
+                'react_seconds':      ctrl._get_phase_target('react'),
+                'effluent_minutes':   ctrl.effluent_time,
+                'effluent_seconds':   ctrl._get_phase_target('effluent'),
+                'wait_minutes':       ctrl.wait_time,
+                'wait_seconds':       ctrl._get_phase_target('wait'),
+            }, namespace='/sbr')
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 
     @socketio.on('sbr_set_threshold', namespace='/sbr')
     def ws_sbr_set_threshold(msg):
+        ctrl = auto_control.sbr_controller
+        if not ctrl:
+            emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
+            return
         try:
             val = float(msg.get('threshold', 0))
             if val < 0:
                 raise ValueError("Threshold moet ≥ 0 zijn")
             set_setting('sbr_influent_level_threshold', str(val))
-            ctrl = auto_control.sbr_controller
-            if ctrl:
-                ctrl.influent_threshold = val
-            emit('sbr_threshold_updated', {'threshold': val}, namespace='/sbr')
+            ctrl.influent_threshold = val
+            emit('sbr_phase_times', {
+                'influent_threshold': val,
+                'react_minutes':      ctrl.react_time,
+                'react_seconds':      ctrl._get_phase_target('react'),
+                'effluent_minutes':   ctrl.effluent_time,
+                'effluent_seconds':   ctrl._get_phase_target('effluent'),
+                'wait_minutes':       ctrl.wait_time,
+                'wait_seconds':       ctrl._get_phase_target('wait'),
+            }, namespace='/sbr')
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
