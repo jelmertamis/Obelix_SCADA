@@ -207,7 +207,10 @@ class SBRController:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0
-                    if idx + 1 == 0:
+                    log(f"🔄 Overgang naar volgende fase: {next_p}")
+                    log((idx + 1) % len(phases))
+                    if (idx + 1) % len(phases) == 0:
+                        log("setting self.timer = 0")
                         self.timer = 0
                     self.current_phase = next_p
                     self._apply_phase(next_p)
@@ -221,10 +224,14 @@ class SBRController:
                     continue
             else:
                 if self.phase_elapsed >= self.phase_end.get(phase, 0):
+                    
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0
-                    if idx + 1 == 0:
+                    log(f"🔄 Overgang naar volgende fase: {next_p}")
+                    log((idx + 1) % len(phases))
+                    if (idx + 1) % len(phases) == 0:
+                        log("setting self.timer = 0")
                         self.timer = 0
                     self.current_phase = next_p
                     self._apply_phase(next_p)
