@@ -176,22 +176,23 @@ def init_socketio(socketio):
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
 
-        # 1) Pauze/actief-status
+        # Pauze/actief-status
         emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
 
-        # 2) Fase-info met fallback voor None
+        # Fase-informatie
         phase = ctrl.current_phase or 'influent'
         emit('sbr_timer', {
             'timer':         ctrl.timer,
             'phase':         phase,
             'phase_elapsed': ctrl.phase_elapsed,
-            'phase_target':  ctrl.phase_end_conditions.get(phase, 0)
+            'phase_target':  ctrl._get_phase_target(phase)
         }, namespace='/sbr')
 
-        # 3) Setpoints
+        # Setpoints en threshold
         ctrl._emit_phase_times()
+        threshold = float(get_setting('sbr_influent_level_threshold', '0'))
+        emit('sbr_threshold_updated', {'threshold': threshold}, namespace='/sbr')
 
- 
     @socketio.on('sbr_control', namespace='/sbr')
     def ws_sbr_control(msg):
         ctrl = auto_control.sbr_controller
@@ -205,17 +206,12 @@ def init_socketio(socketio):
                 ctrl.stop()
             else:
                 ctrl.start()
-            # direct status doorgeven zodat de balk kleurt
             emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
-
         elif action == 'reset':
             ctrl.reset()
-            # na reset opnieuw status sturen
             emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
-
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
-
 
     @socketio.on('sbr_set_phase_times', namespace='/sbr')
     def ws_sbr_set_phase_times(msg):
@@ -224,7 +220,6 @@ def init_socketio(socketio):
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
         try:
-            # Lees alleen de fases die de client heeft aangepast
             updates = {}
             for key in ('influent', 'react', 'effluent', 'wait'):
                 if key in msg:
@@ -232,25 +227,25 @@ def init_socketio(socketio):
                     if val < 0:
                         raise ValueError(f"Tijd voor {key} moet positief zijn")
                     updates[key] = val
-
-            # Sla nieuwe fasetijden op
             ctrl.set_phase_times(
-                updates.get('influent',  ctrl.influent_time),
-                updates.get('react',     ctrl.react_time),
-                updates.get('effluent',  ctrl.effluent_time),
-                updates.get('wait',      ctrl.wait_time)
+                updates.get('influent', ctrl.influent_time),
+                updates.get('react',    ctrl.react_time),
+                updates.get('effluent', ctrl.effluent_time),
+                updates.get('wait',     ctrl.wait_time)
             )
-
-            # Als de lopende fase is aangepast, update direct de end_condition
-            current = ctrl.current_phase or 'influent'
-            if current in updates:
-                ctrl.phase_end_condition = ctrl.phase_end_conditions[current]
-
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 
-    @socketio.on('sbr_get_phase_times', namespace='/sbr')
-    def ws_sbr_get_phase_times():
-        ctrl = auto_control.sbr_controller
-        if ctrl:
-            ctrl._emit_phase_times()
+    @socketio.on('sbr_set_threshold', namespace='/sbr')
+    def ws_sbr_set_threshold(msg):
+        try:
+            val = float(msg.get('threshold', 0))
+            if val < 0:
+                raise ValueError("Threshold moet ≥ 0 zijn")
+            set_setting('sbr_influent_level_threshold', str(val))
+            ctrl = auto_control.sbr_controller
+            if ctrl:
+                ctrl.influent_threshold = val
+            emit('sbr_threshold_updated', {'threshold': val}, namespace='/sbr')
+        except Exception as e:
+            emit('sbr_error', {'error': str(e)}, namespace='/sbr')

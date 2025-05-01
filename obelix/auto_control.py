@@ -4,7 +4,11 @@ import threading
 import itertools
 from flask_socketio import SocketIO
 from obelix.config import Config
-from obelix.database import get_setting, set_setting, save_relay_state, get_relay_state
+from obelix.database import (
+    get_setting, set_setting,
+    save_relay_state, get_relay_state,
+    get_calibration, get_dummy_value
+)
 from obelix.modbus_client import get_clients, modbus_lock
 from obelix.utils import log
 
@@ -17,235 +21,237 @@ class SBRController:
         self.r302_unit     = 0
         self.start_event   = threading.Event()
         self.timer         = 0
-        # Fase-cyclus: influent -> react -> effluent -> wait
+
+        # Fase-cyclus
         self._phase_cycle  = itertools.cycle(['influent', 'react', 'effluent', 'wait'])
         self.current_phase = None
         self.phase_elapsed = 0
-        self.phase_end_conditions = {}
 
-
-        # Laad fasetijden (in minuten) uit DB, met fallback
+        # Laad fasetijden
         base = get_setting('sbr_cycle_time_minutes', '7')
         self.influent_time = float(get_setting('sbr_influent_time_minutes') or base)
         self.react_time    = float(get_setting('sbr_react_time_minutes')    or base)
         self.effluent_time = float(get_setting('sbr_effluent_time_minutes') or base)
         self.wait_time     = float(get_setting('sbr_wait_time_minutes')     or '0.5')
+
+        # Level-drempel
+        self.influent_threshold = float(get_setting('sbr_influent_level_threshold', '0'))
+
+        # Sensor-unit/kanaal (slave ID 5, kanaal 0)
+        self.level_unit    = next(
+            i for i, u in enumerate(Config.UNITS)
+            if u['type']=='analog' and u['slave_id']==5
+        )
+        self.level_channel = 0
+
         self._update_phase_end_conditions()
 
-        # Init UI: status en alle AUTO-relays uit
+        # Init UI
         self._emit_status()
         self._auto_off_all()
 
     def _update_phase_end_conditions(self):
-        """Stelt per fase de end-condition in (nu in seconden)."""
-        self.phase_end_conditions = {
+        self.phase_end = {
             'influent': int(self.influent_time * 60),
             'react':    int(self.react_time    * 60),
             'effluent': int(self.effluent_time * 60),
             'wait':     int(self.wait_time     * 60),
-    }
+        }
 
+    def _get_phase_target(self, phase):
+        if phase == 'influent' and self.influent_threshold > 0:
+            return self.influent_threshold
+        return self.phase_end.get(phase, 0)
 
-    def set_phase_times(self, infl_min, react_min, effl_min, wait_min):
-        # Bewaar de eerste drie tijden
-        set_setting('sbr_influent_time_minutes', str(infl_min))
-        set_setting('sbr_react_time_minutes', str(react_min))
-        set_setting('sbr_effluent_time_minutes', str(effl_min))
-        set_setting('sbr_wait_time_minutes', str(wait_min))
-        
-        # Update intern
-        self.influent_time = infl_min
-        self.react_time    = react_min
-        self.effluent_time = effl_min
-        self.wait_time = wait_min
+    def set_phase_times(self, infl, react, effl, wait):
+        set_setting('sbr_influent_time_minutes', str(infl))
+        set_setting('sbr_react_time_minutes',    str(react))
+        set_setting('sbr_effluent_time_minutes', str(effl))
+        set_setting('sbr_wait_time_minutes',     str(wait))
+        self.influent_time, self.react_time, self.effluent_time, self.wait_time = infl, react, effl, wait
         self._update_phase_end_conditions()
-
-        log(
-            f"⏱ Phasetijden ingesteld:" 
-            f"Influent={self.phase_end_conditions['influent']}s, "
-            f"React={self.phase_end_conditions['react']}s, "
-            f"Effluent={self.phase_end_conditions['effluent']}s, "
-            f"Wait={self.phase_end_conditions['wait']}s"
-        )
+        log(f"SBR times updated: Influent target={self._get_phase_target('influent')}s")
         self._emit_phase_times()
 
     def start(self):
         if not self.start_event.is_set():
-            # Eerste keer starten: initialiseert fase en teller
             if self.current_phase is None:
                 self.current_phase = next(self._phase_cycle)
                 self.phase_elapsed = 0
                 self.timer = 0
-
-            # Activeer de cycle
             self.start_event.set()
-            log("▶ START pressed")
+            log("▶ SBR START")
             self._emit_status()
-
-            # # Direct de juiste relaisstand toepassen voor de huidige fase
             self._apply_phase(self.current_phase)
 
     def stop(self):
         if self.start_event.is_set():
             self.start_event.clear()
-            log("⏸ STOP pressed (pauze)")
+            log("⏸ SBR STOP")
             self._emit_status()
             self._auto_off_all()
 
     def reset(self):
-        # Reset naar fase 'influent', timer 0, behoud actieve status
         self.timer = 0
         self.current_phase = 'influent'
         self.phase_elapsed = 0
-        log("🔄 RESET pressed — terug naar fase INFLUENT, 0s")
-
+        log("🔄 SBR RESET to influent")
         if self.start_event.is_set():
-            # Als de cycle draait, pas de normale fase-logica toe
             self._apply_phase('influent')
         else:
-            # Als gepauzeerd, zet alle AUTO-relais uit
             self._auto_off_all()
-
-        # Status en timer naar de client sturen
         self._emit_status()
         self.socketio.emit('sbr_timer', {
-            'timer':          0,
-            'phase':          'influent',
-            'phase_elapsed':  0,
-            'phase_target': self.phase_end_conditions['influent']
+            'timer':         0,
+            'phase':         'influent',
+            'phase_elapsed': 0,
+            'phase_target':  self._get_phase_target('influent'),
+            'actual_level':  None
         }, namespace='/sbr')
 
-    
     def _emit_status(self):
         self.socketio.emit('sbr_status', {'active': self.start_event.is_set()}, namespace='/sbr')
         self.socketio.emit('sbr_timer',  {'timer': self.timer}, namespace='/sbr')
 
     def _emit_phase_times(self):
-        data = {
+        self.socketio.emit('sbr_phase_times', {
             'influent_minutes': self.influent_time,
-            'influent_seconds': self.phase_end_conditions['influent'],
+            'influent_seconds': self._get_phase_target('influent'),
             'react_minutes':    self.react_time,
-            'react_seconds':    self.phase_end_conditions['react'],
+            'react_seconds':    self._get_phase_target('react'),
             'effluent_minutes': self.effluent_time,
-            'effluent_seconds': self.phase_end_conditions['effluent'],
+            'effluent_seconds': self._get_phase_target('effluent'),
             'wait_minutes':     self.wait_time,
-            'wait_seconds':     self.phase_end_conditions['wait'],
-        }
-        self.socketio.emit('sbr_phase_times', data, namespace='/sbr')
+            'wait_seconds':     self._get_phase_target('wait'),
+        }, namespace='/sbr')
 
     def _auto_off_all(self):
         inst = self.clients[self.r302_unit]
-        # Voor iedere R302-relay: indien in AUTO en nog niet OFF, zet uit
         for coil in Config.R302_RELAY_MAPPING:
             mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
-            current_state = get_relay_state(self.r302_unit, coil)
-            if mode == 'AUTO' and current_state != 'OFF':
+            state= get_relay_state(self.r302_unit, coil)
+            if mode == 'AUTO' and state != 'OFF':
                 with modbus_lock:
                     inst.write_bit(coil, False, functioncode=5)
                     save_relay_state(self.r302_unit, coil, 'OFF')
-
-                # Stuur update naar alle /relays-clients
                 self.socketio.emit('relay_toggled', {
                     'unit_idx': self.r302_unit,
                     'coil_idx': coil,
                     'state':    'OFF'
                 }, namespace='/relays')
-
-        # Na auto-off: stuur nieuwe status van alle R302-coils naar alle /r302-clients
         from obelix.r302_manager import R302Controller
-        status = R302Controller(self.r302_unit).get_status()
-        self.socketio.emit('r302_update', status, namespace='/r302')
-
+        self.socketio.emit('r302_update',
+                           R302Controller(self.r302_unit).get_status(),
+                           namespace='/r302')
 
     def _apply_phase(self, phase):
-        # Bij 'wait' enkel alle relais uit
         if phase == 'wait':
-            self._auto_off_all()
-            return
-
+            return self._auto_off_all()
+        inst = self.clients[self.r302_unit]
         coil_map = {'influent': 0, 'effluent': 1}
         target   = coil_map.get(phase)
-        inst     = self.clients[self.r302_unit]
         for coil in Config.R302_RELAY_MAPPING:
             mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
             if mode != 'AUTO':
                 continue
-            want_on = (coil == target)
+            want = (coil == target)
             with modbus_lock:
-                inst.write_bit(coil, want_on, functioncode=5)
-                save_relay_state(self.r302_unit, coil, 'ON' if want_on else 'OFF')
-            log(f"✖ Phase {phase}: AUTO relay {coil} → {'ON' if want_on else 'OFF'}")
+                inst.write_bit(coil, want, functioncode=5)
+                save_relay_state(self.r302_unit, coil, 'ON' if want else 'OFF')
             self.socketio.emit('relay_toggled', {
                 'unit_idx': self.r302_unit,
                 'coil_idx': coil,
-                'state':    'ON' if want_on else 'OFF'
+                'state':    'ON' if want else 'OFF'
             }, namespace='/relays')
         from obelix.r302_manager import R302Controller
-        self.socketio.emit('r302_update', R302Controller(self.r302_unit).get_status(), namespace='/r302')
+        self.socketio.emit('r302_update',
+                           R302Controller(self.r302_unit).get_status(),
+                           namespace='/r302')
 
     def run(self):
         global sbr_controller
         sbr_controller = self
-        log("▶ SBR thread started")
+        log("🔄 SBR thread started")
         phases = ['influent', 'react', 'effluent', 'wait']
-        
+
         while True:
-            # Eerst check of de cyclus actief is
             if not self.start_event.is_set():
                 self.socketio.sleep(1)
                 continue
-            
-            phase = self.current_phase or phases[0]
-            end_condition = self.phase_end_conditions[phase]
 
-            # 1) Check of de fase nog loopt
-            if self.phase_elapsed >= end_condition:
-                # a) fase voorbij → direct wisselen
-                idx       = phases.index(phase)
-                next_idx  = (idx + 1) % len(phases)
-                next_phase = phases[next_idx]
+            phase = self.current_phase or 'influent'
 
-                # reset fase‐teller
-                self.phase_elapsed = 0
-                # reset cycle‐timer alleen bij wrap naar eerste fase
-                if next_idx == 0:
-                    self.timer = 0
-                self.current_phase = next_phase
+            # Lees dummy override of echt register
+            raw = None
+            dummy = get_dummy_value(self.level_unit, self.level_channel)
+            if dummy is not None:
+                raw = dummy
+            else:
+                try:
+                    with modbus_lock:
+                        raw = self.clients[self.level_unit].read_register(
+                            self.level_channel, functioncode=4
+                        )
+                except:
+                    raw = None
 
-                # zet meteen de relais voor de nieuwe fase
-                if self.phase_end_conditions[next_phase] > 0:
-                    self._apply_phase(next_phase)
+            # Bereken calibrated actual
+            actual = None
+            if raw is not None:
+                cal = get_calibration(self.level_unit, self.level_channel)
+                actual = raw * cal['scale'] + cal['offset']
 
-                # emit direct update met elapsed=0
-                self.socketio.emit('sbr_timer', {
-                    'timer':         self.timer,
-                    'phase':         next_phase,
-                    'phase_elapsed': 0,
-                    'phase_target':  self.phase_end_conditions[next_phase]
-                }, namespace='/sbr')
+            # Overgang voor influent op basis level
+            if phase == 'influent' and self.influent_threshold > 0 and actual is not None:
+                if actual >= self.influent_threshold:
+                    idx = phases.index(phase)
+                    next_p = phases[(idx + 1) % len(phases)]
+                    self.phase_elapsed = 0
+                    if idx + 1 == 0:
+                        self.timer = 0
+                    self.current_phase = next_p
+                    self._apply_phase(next_p)
+                    self.socketio.emit('sbr_timer', {
+                        'timer':         self.timer,
+                        'phase':         next_p,
+                        'phase_elapsed': 0,
+                        'phase_target':  self._get_phase_target(next_p),
+                        'actual_level':  None
+                    }, namespace='/sbr')
+                    continue
+            else:
+                if self.phase_elapsed >= self.phase_end.get(phase, 0):
+                    idx = phases.index(phase)
+                    next_p = phases[(idx + 1) % len(phases)]
+                    self.phase_elapsed = 0
+                    if idx + 1 == 0:
+                        self.timer = 0
+                    self.current_phase = next_p
+                    self._apply_phase(next_p)
+                    self.socketio.emit('sbr_timer', {
+                        'timer':         self.timer,
+                        'phase':         next_p,
+                        'phase_elapsed': 0,
+                        'phase_target':  self._get_phase_target(next_p),
+                        'actual_level':  None
+                    }, namespace='/sbr')
+                    continue
 
-                # sla sleep en increment over
-                continue
-
-            # 2) Fase loopt nog → zet relais
             if self.phase_elapsed == 0:
                 self._apply_phase(phase)
 
-
-            self.socketio.sleep(1)
-            
-            # Tellers updaten
-            self.phase_elapsed += 1
-            self.timer += 1
-
+            # Emit status met actual_level
             self.socketio.emit('sbr_timer', {
                 'timer':          self.timer,
                 'phase':          phase,
                 'phase_elapsed':  self.phase_elapsed,
-                'phase_target':   end_condition
+                'phase_target':   self._get_phase_target(phase),
+                'actual_level':   actual
             }, namespace='/sbr')
 
-            
+            self.socketio.sleep(1)
+            self.phase_elapsed += 1
+            self.timer += 1
 
 def start_sbr_controller(socketio: SocketIO):
     global sbr_controller

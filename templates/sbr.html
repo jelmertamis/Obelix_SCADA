@@ -1,4 +1,3 @@
-<!-- templates/sbr.html -->
 {% extends 'base.html' %}
 
 {% block title %}SBR Configuratie & Status{% endblock %}
@@ -14,7 +13,7 @@
   }
   .sbr-phase-list {
     width: 100%;
-    max-width: 500px;
+    max-width: 600px;
     margin-top: 1rem;
     display: flex;
     flex-direction: column;
@@ -22,7 +21,12 @@
   }
   .phase-box {
     display: grid;
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 
+      1fr           /* naam */
+      auto          /* actuele waarde / tijd */
+      auto          /* target waarde / tijd */
+      auto          /* input */
+      auto          /* set-knop */;
     align-items: center;
     background: #f9f9f9;
     padding: 0.75rem 1rem;
@@ -37,8 +41,8 @@
     color: #333;
   }
   .phase-name { font-weight: bold; }
-  .phase-progress { text-align: right; min-width: 8rem; }
-  .phase-elapsed-container.hidden { visibility: hidden; }
+  .phase-value { text-align: right; min-width: 5rem; }
+  .phase-progress { text-align: right; min-width: 5rem; }
   .phase-input {
     width: 4rem;
     padding: 0.3rem;
@@ -47,7 +51,7 @@
     border-radius: 0.25rem;
   }
   .phase-set-btn {
-    padding: 0.8rem 1rem;
+    padding: 0.6rem 1rem;
     font-size: 0.9rem;
     border: none;
     border-radius: 0.25rem;
@@ -69,7 +73,7 @@
   </div>
 
   <!-- Start/Stop/Reset knoppen -->
-  <div style="margin-top:0;">
+  <div style="margin-bottom:1rem;">
     <button id="btn-toggle" class="phase-set-btn">Start Cycle</button>
     <button id="btn-reset"  class="phase-set-btn">Reset Cycle</button>
   </div>
@@ -79,18 +83,37 @@
     {% for key,label in [('influent','Influent'),('react','React'),('effluent','Effluent'),('wait','Wait')] %}
     <div class="phase-box" id="phase-{{ key }}-box">
       <div class="phase-name">{{ label }}</div>
-      <div class="phase-progress">
-        <!-- Verstreken tijd -->
-        <span class="phase-elapsed-container hidden" id="{{ key }}-elapsed-container">
-          <span class="phase-elapsed" id="{{ key }}-elapsed"></span> /
-        </span>
-        <!-- Totaal doel (phase_target) -->
-        <span class="phase-total" id="{{ key }}-total"></span> s
-      </div>
-      <!-- Input voor setpoint in minuten -->
-      <input type="number" step="0.1" min="0"
-             class="phase-input" id="{{ key }}-input" placeholder="min">
-      <button class="phase-set-btn" data-phase="{{ key }}">Set</button>
+
+      {% if key == 'influent' %}
+        <!-- Actual en target voor level-based fase -->
+        <div class="phase-value">
+          <span id="influent-actual">--</span>
+        </div>
+        <div class="phase-value">
+          <span id="influent-threshold-display">--</span>
+        </div>
+      {% else %}
+        <!-- Tijd-gestuurde fases: elapsed / target -->
+        <div class="phase-progress" id="{{ key }}-elapsed-container">
+          <span id="{{ key }}-elapsed">0</span> / 
+          <span id="{{ key }}-total">0</span> s
+        </div>
+        <div></div>
+      {% endif %}
+
+      <!-- Input voor fasetijd of threshold -->
+      {% if key == 'influent' %}
+        <input type="number" step="0.1" min="0"
+               class="phase-input" id="influent-threshold-input" placeholder="Setpoint">
+      {% else %}
+        <input type="number" step="0.1" min="0"
+               class="phase-input" id="{{ key }}-input" placeholder="min">
+      {% endif %}
+
+      <button class="phase-set-btn"
+              id="{% if key=='influent' %}btn-set-threshold{% else %}btn-set-{{ key }}{% endif %}">
+        {% if key=='influent' %}Set Level{% else %}Set{% endif %}
+      </button>
     </div>
     {% endfor %}
   </div>
@@ -103,73 +126,80 @@
   const socket = io('/sbr');
   const phases = ['influent','react','effluent','wait'];
 
-  // Element-referenties
-  const boxes        = {}, 
-        elapsCont    = {}, 
-        elapsedElems = {}, 
-        totalElems   = {}, 
-        inputElems   = {}, 
-        setBtns      = {};
+  // Elementen cache
+  const boxes      = {};
+  const actualEl   = document.getElementById('influent-actual');
+  const targetEl   = document.getElementById('influent-threshold-display');
+  const threshIn   = document.getElementById('influent-threshold-input');
+  const btnThresh  = document.getElementById('btn-set-threshold');
+  const elapsedEl  = {};
+  const totalEl    = {};
+  const inputEl    = {};
+  const btnSet     = {};
 
   phases.forEach(p => {
-    boxes[p]        = document.getElementById(`phase-${p}-box`);
-    elapsCont[p]    = document.getElementById(`${p}-elapsed-container`);
-    elapsedElems[p] = document.getElementById(`${p}-elapsed`);
-    totalElems[p]   = document.getElementById(`${p}-total`);
-    inputElems[p]   = document.getElementById(`${p}-input`);
-    setBtns[p]      = document.querySelector(`.phase-set-btn[data-phase="${p}"]`);
-
-    // Set-knop per fase
-    setBtns[p].addEventListener('click', () => {
-      const val = parseFloat(inputElems[p].value);
-      if (isNaN(val) || val < 0) {
-        return alert(`Invoer voor ${p} moet positief`);
-      }
-      // Stuur alleen de gewijzigde fase
-      socket.emit('sbr_set_phase_times', { [p]: val });
-    });
-
-    inputElems[p].addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        setBtns[p].click();
-      }
-    });
+    boxes[p]      = document.getElementById(`phase-${p}-box`);
+    if (p !== 'influent') {
+      elapsedEl[p] = document.getElementById(`${p}-elapsed`);
+      totalEl[p]   = document.getElementById(`${p}-total`);
+      inputEl[p]   = document.getElementById(`${p}-input`);
+      btnSet[p]    = document.getElementById(`btn-set-${p}`);
+      btnSet[p].addEventListener('click', () => {
+        const v = parseFloat(inputEl[p].value);
+        if (isNaN(v) || v<0) return alert(`Tijd voor ${p} moet ≥ 0 zijn`);
+        socket.emit('sbr_set_phase_times', { [p]: v });
+      });
+    }
   });
 
-  // Toggle en reset
-  document.getElementById('btn-toggle').addEventListener('click', () =>
-    socket.emit('sbr_control', { action: 'toggle' })
-  );
-  document.getElementById('btn-reset').addEventListener('click', () =>
-    socket.emit('sbr_control', { action: 'reset' })
-  );
+  // Start / Reset
+  document.getElementById('btn-toggle')
+    .addEventListener('click', () => socket.emit('sbr_control',{action:'toggle'}));
+  document.getElementById('btn-reset')
+    .addEventListener('click', () => socket.emit('sbr_control',{action:'reset'}));
 
-  // Cycle-timer formatter
-  const cycleTimerEl = document.getElementById('cycle-timer');
-  function formatTime(sec) {
-    const m = String(Math.floor(sec/60)).padStart(2,'0');
-    const s = String(sec%60).padStart(2,'0');
-    return `${m}:${s}`;
-  }
-
-  // Bij connect: vraag fase-instellingen
-  socket.on('connect', () => {
-    socket.emit('sbr_get_phase_times');
+  // Set level-threshold
+  btnThresh.addEventListener('click', () => {
+    const v = parseFloat(threshIn.value);
+    if (isNaN(v) || v<0) return alert('Threshold moet ≥ 0 zijn');
+    socket.emit('sbr_set_threshold', { threshold: v });
   });
 
-  // Init setpoints en totale duur
+  // Handlers
+  socket.on('sbr_threshold_updated', data => {
+    targetEl.textContent = data.threshold;
+    threshIn.value = data.threshold;
+  });
+
+  socket.on('sbr_timer', data => {
+    // Highlight actieve fase
+    phases.forEach(p => boxes[p].classList.toggle('active', p === data.phase));
+
+    if (data.phase === 'influent') {
+      // toon actual level en target
+      if (data.actual_level != null) {
+        actualEl.textContent = data.actual_level.toFixed(2);
+      }
+      targetEl.textContent = data.phase_target;
+    } else {
+      // toon elapsed / total seconden
+      elapsedEl[data.phase].textContent = data.phase_elapsed;
+      totalEl[data.phase].textContent   = data.phase_target;
+    }
+    // Update globale timer
+    const m = String(Math.floor(data.timer/60)).padStart(2,'0');
+    const s = String(data.timer%60).padStart(2,'0');
+    document.getElementById('cycle-timer').textContent = `Cyclus: ${m}:${s}`;
+  });
+
   socket.on('sbr_phase_times', data => {
-    phases.forEach(p => {
-      // hide elapsed containers
-      elapsCont[p].classList.add('hidden');
-      // vul input en totaal (in seconden) via data.<fase>_seconds
-      inputElems[p].value = data[p + '_minutes'];
-      totalElems[p].textContent = data[p + '_seconds'];
+    // init voor tijdgestuurde fases
+    phases.filter(p => p!=='influent').forEach(p => {
+      inputEl[p].value = data[p+'_minutes'];
+      totalEl[p].textContent = data[p+'_seconds'];
     });
   });
 
-  // Start/Pauze knopstatus
   socket.on('sbr_status', data => {
     document.getElementById('btn-toggle').textContent =
       data.active ? 'Stop Cycle' : 'Start Cycle';
@@ -177,29 +207,8 @@
             .classList.toggle('paused', !data.active);
   });
 
-  // Live timer‐updates
-  socket.on('sbr_timer', data => {
-    // 1) Globale cycle‐timer
-    cycleTimerEl.textContent = 'Cyclus: ' + formatTime(data.timer);
-
-    // 2) per-fase elapsed en target
-    const { phase, phase_elapsed, phase_target } = data;
-    if (!phases.includes(phase)) return;
-
-    // hide all elapsed
-    phases.forEach(p => elapsCont[p].classList.add('hidden'));
-
-    // show elapsed for active
-    elapsedElems[phase].textContent = phase_elapsed;
-    elapsCont[phase].classList.remove('hidden');
-
-    // show target (phase_target)
-    totalElems[phase].textContent = phase_target;
-
-    // 3) highlight actieve fase
-    phases.forEach(p =>
-      boxes[p].classList.toggle('active', p === phase)
-    );
+  socket.on('connect', () => {
+    socket.emit('sbr_get_phase_times');
   });
 </script>
 {% endblock %}

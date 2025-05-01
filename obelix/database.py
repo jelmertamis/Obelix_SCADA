@@ -1,10 +1,13 @@
+# obelix/database.py
+
 import sqlite3
 from obelix.config import Config
 
 def init_db():
     conn = sqlite3.connect(Config.DB_FILE)
     c = conn.cursor()
-    # Bestaand calibration‐schema
+
+    # Bestaand calibration-schema
     c.execute('''
         CREATE TABLE IF NOT EXISTS calibration (
             unit_index INTEGER NOT NULL,
@@ -21,13 +24,20 @@ def init_db():
     if 'unit' not in cols:
         c.execute('ALTER TABLE calibration ADD COLUMN unit TEXT DEFAULT ""')
 
-    # Overige tabellen
+    # Settings-tabel
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         )
     ''')
+    # Default voor de nieuwe influent-level-threshold
+    c.execute('''
+        INSERT OR IGNORE INTO settings(key, value)
+        VALUES('sbr_influent_level_threshold','0')
+    ''')
+
+    # Overige tabellen
     c.execute('''
         CREATE TABLE IF NOT EXISTS aio_settings (
             channel INTEGER PRIMARY KEY,
@@ -42,8 +52,6 @@ def init_db():
             PRIMARY KEY(unit_index, coil_index)
         )
     ''')
-
-    # **Nieuw: tabel voor handmatige dummy-sensorwaarden**
     c.execute('''
         CREATE TABLE IF NOT EXISTS dummy_sensor (
             unit_index INTEGER NOT NULL,
@@ -101,7 +109,6 @@ def get_calibration(unit_index, channel):
             'phys_max': row[3],
             'unit':     row[4] or ''
         }
-    # Standaardwaarden als nog niet gekalibreerd
     return {'scale': 1.0, 'offset': 0.0, 'phys_min': 0.0, 'phys_max': 0.0, 'unit': ''}
 
 def save_calibration(unit_index, channel, scale, offset, phys_min, phys_max, unit):
@@ -177,14 +184,7 @@ def get_relay_state(unit_index, coil_index):
     conn.close()
     return row[0] if row else None
 
-# ---------------------------------------------------------------------
-# **Nieuwe helper-functies voor dummy-sensorwaarden**
-# ---------------------------------------------------------------------
-
 def set_dummy_value(unit_index, channel, value):
-    """
-    Sla een handmatig ingestelde dummy-waarde op voor een sensorkanaal.
-    """
     conn = sqlite3.connect(Config.DB_FILE)
     c = conn.cursor()
     c.execute('''
@@ -196,9 +196,6 @@ def set_dummy_value(unit_index, channel, value):
     conn.close()
 
 def get_dummy_value(unit_index, channel):
-    """
-    Haal de handmatig ingestelde dummy-waarde op, of None als niet gedefinieerd.
-    """
     conn = sqlite3.connect(Config.DB_FILE)
     c = conn.cursor()
     c.execute('''
