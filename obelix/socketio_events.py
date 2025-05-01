@@ -229,8 +229,8 @@ def init_socketio(socketio):
             for key in ('influent', 'react', 'effluent', 'wait'):
                 if key in msg:
                     val = float(msg[key])
-                    if val <= 0:
-                        raise ValueError(f"Tijd voor {key} moet > 0 zijn")
+                    if val < 0:
+                        raise ValueError(f"Tijd voor {key} moet positief zijn")
                     updates[key] = val
 
             # Sla nieuwe fasetijden op
