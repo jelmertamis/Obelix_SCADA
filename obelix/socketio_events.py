@@ -234,7 +234,8 @@ def init_socketio(socketio):
             # Éénmalig status + fase sturen
             emit('sbr_status', {
                 'active': ctrl.start_event.is_set(),
-                'phase':  ctrl.current_phase
+                'phase':  ctrl.current_phase,
+                'phase_elapsed': ctrl.phase_elapsed
             }, namespace='/sbr')
 
             # En direct de thresholds/tijden meezenden

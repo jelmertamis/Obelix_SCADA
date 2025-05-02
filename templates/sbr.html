@@ -170,6 +170,18 @@
     if (data.phase) {
       lastPhase = data.phase;
     }
+    phases.forEach(p => {
+      if (p === 'influent') {
+        actual[p].textContent = 
+          data.actual_level != null
+            ? data.actual_level.toFixed(2)
+            : '';
+      } else if (p === data.phase) {
+        actual[p].textContent = String(data.phase_elapsed);
+      } else {
+        actual[p].textContent = '';
+      }
+    });
     updateHighlight(data.phase);
   });
 
