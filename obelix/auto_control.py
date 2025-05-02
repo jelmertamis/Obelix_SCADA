@@ -232,7 +232,7 @@ class SBRController:
                     }, namespace='/sbr')
                     continue
             elif phase == 'effluent' and self.effluent_threshold >= 0 and actual is not None:
-                if actual >= self.effluent_threshold:
+                if actual <= self.effluent_threshold:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0
