@@ -42,6 +42,20 @@ def init_socketio(socketio):
                     log(f"Error fetching relays unit {i}: {e}")
                     out.append({'idx': i, 'name': unit['name'], 'states': [False]*8})
         emit('init_relays', out, namespace='/relays')
+    
+    def broadcast_phase_settings(ctrl):
+        """Stuur álle thresholds en tijden naar de client."""
+        emit('sbr_phase_times', {
+            'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
+            'effluent_threshold': float(get_setting('sbr_effluent_level_threshold', '0')),
+            'react_minutes':      ctrl.react_time,
+            'react_seconds':      ctrl._get_phase_target('react'),
+            'effluent_minutes':   ctrl.effluent_time,
+            'effluent_seconds':   ctrl._get_phase_target('effluent'),
+            'wait_minutes':       ctrl.wait_time,
+            'wait_seconds':       ctrl._get_phase_target('wait'),
+        }, namespace='/sbr')
+
 
     @socketio.on('toggle_relay', namespace='/relays')
     def ws_toggle_relay(msg):
@@ -189,15 +203,7 @@ def init_socketio(socketio):
         }, namespace='/sbr')
 
         # 3) Setpoints & threshold
-        emit('sbr_phase_times', {
-            'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
-            'react_minutes':      ctrl.react_time,
-            'react_seconds':      ctrl._get_phase_target('react'),
-            'effluent_minutes':   ctrl.effluent_time,
-            'effluent_seconds':   ctrl._get_phase_target('effluent'),
-            'wait_minutes':       ctrl.wait_time,
-            'wait_seconds':       ctrl._get_phase_target('wait'),
-        }, namespace='/sbr')
+        broadcast_phase_settings(ctrl)
 
     @socketio.on('sbr_get_phase_times', namespace='/sbr')
     def ws_sbr_get_phase_times():
@@ -205,15 +211,7 @@ def init_socketio(socketio):
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
-        emit('sbr_phase_times', {
-            'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
-            'react_minutes':      ctrl.react_time,
-            'react_seconds':      ctrl._get_phase_target('react'),
-            'effluent_minutes':   ctrl.effluent_time,
-            'effluent_seconds':   ctrl._get_phase_target('effluent'),
-            'wait_minutes':       ctrl.wait_time,
-            'wait_seconds':       ctrl._get_phase_target('wait'),
-        }, namespace='/sbr')
+        broadcast_phase_settings(ctrl)
 
     @socketio.on('sbr_control', namespace='/sbr')
     def ws_sbr_control(msg):
@@ -239,16 +237,8 @@ def init_socketio(socketio):
             }, namespace='/sbr')
 
             # En direct de thresholds/tijden meezenden
-            emit('sbr_phase_times', {
-                'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
-                'react_minutes':      ctrl.react_time,
-                'react_seconds':      ctrl._get_phase_target('react'),
-                'effluent_minutes':   ctrl.effluent_time,
-                'effluent_seconds':   ctrl._get_phase_target('effluent'),
-                'wait_minutes':       ctrl.wait_time,
-                'wait_seconds':       ctrl._get_phase_target('wait'),
-            }, namespace='/sbr')
-
+            broadcast_phase_settings(ctrl)
+            
         elif action == 'reset':
             ctrl.reset()
 
@@ -256,17 +246,7 @@ def init_socketio(socketio):
                 'active': ctrl.start_event.is_set(),
                 'phase':  ctrl.current_phase
             }, namespace='/sbr')
-
-            emit('sbr_phase_times', {
-                'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
-                'react_minutes':      ctrl.react_time,
-                'react_seconds':      ctrl._get_phase_target('react'),
-                'effluent_minutes':   ctrl.effluent_time,
-                'effluent_seconds':   ctrl._get_phase_target('effluent'),
-                'wait_minutes':       ctrl.wait_time,
-                'wait_seconds':       ctrl._get_phase_target('wait'),
-            }, namespace='/sbr')
-
+            broadcast_phase_settings(ctrl)
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
 
@@ -291,15 +271,7 @@ def init_socketio(socketio):
                 updates.get('effluent', ctrl.effluent_time),
                 updates.get('wait',     ctrl.wait_time)
             )
-            emit('sbr_phase_times', {
-                'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
-                'react_minutes':      ctrl.react_time,
-                'react_seconds':      ctrl._get_phase_target('react'),
-                'effluent_minutes':   ctrl.effluent_time,
-                'effluent_seconds':   ctrl._get_phase_target('effluent'),
-                'wait_minutes':       ctrl.wait_time,
-                'wait_seconds':       ctrl._get_phase_target('wait'),
-            }, namespace='/sbr')
+            broadcast_phase_settings(ctrl)
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 
@@ -315,14 +287,23 @@ def init_socketio(socketio):
                 raise ValueError("Threshold moet ≥ 0 zijn")
             set_setting('sbr_influent_level_threshold', str(val))
             ctrl.influent_threshold = val
-            emit('sbr_phase_times', {
-                'influent_threshold': val,
-                'react_minutes':      ctrl.react_time,
-                'react_seconds':      ctrl._get_phase_target('react'),
-                'effluent_minutes':   ctrl.effluent_time,
-                'effluent_seconds':   ctrl._get_phase_target('effluent'),
-                'wait_minutes':       ctrl.wait_time,
-                'wait_seconds':       ctrl._get_phase_target('wait'),
-            }, namespace='/sbr')
+            broadcast_phase_settings(ctrl)
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
+
+    @socketio.on('sbr_set_effluent_threshold', namespace='/sbr')
+    def ws_sbr_set_effluent_threshold(msg):
+        ctrl = auto_control.sbr_controller
+        if not ctrl:
+            return emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
+        try:
+            val = float(msg.get('threshold', 0))
+            if val < 0:
+                raise ValueError("Threshold moet ≥ 0 zijn")
+            set_setting('sbr_effluent_level_threshold', str(val))
+            ctrl.effluent_threshold = val
+            # Gebruik hier dezelfde helper als voor influent!
+            broadcast_phase_settings(ctrl)
+        except Exception as e:
+            emit('sbr_error', {'error': str(e)}, namespace='/sbr')
+

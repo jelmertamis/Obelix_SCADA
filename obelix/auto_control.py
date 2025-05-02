@@ -36,6 +36,7 @@ class SBRController:
 
         # Level-drempel
         self.influent_threshold = float(get_setting('sbr_influent_level_threshold', '0'))
+        self.effluent_threshold = float(get_setting('sbr_effluent_level_threshold', '0'))
 
         # Sensor-unit/kanaal (slave ID 5, kanaal 0)
         self.level_unit    = next(
@@ -59,9 +60,17 @@ class SBRController:
         }
 
     def _get_phase_target(self, phase):
-        if phase == 'influent' and self.influent_threshold > 0:
+        """
+        Bepaalt het doelcriterium voor elke fase:
+        – Voor influent en effluent (bij drempel >= 0) op level
+        – Anders op tijd (in seconden)
+        """
+        if phase == 'influent' and self.influent_threshold >= 0:
             return self.influent_threshold
+        if phase == 'effluent' and self.effluent_threshold >= 0:
+            return self.effluent_threshold
         return self.phase_end.get(phase, 0)
+
 
     def set_phase_times(self, infl, react, effl, wait):
         set_setting('sbr_influent_time_minutes', str(infl))
@@ -202,8 +211,28 @@ class SBRController:
                 actual = raw * cal['scale'] + cal['offset']
 
             # Overgang voor influent op basis level
-            if phase == 'influent' and self.influent_threshold > 0 and actual is not None:
+            if phase == 'influent' and self.influent_threshold >= 0 and actual is not None:
                 if actual >= self.influent_threshold:
+                    idx = phases.index(phase)
+                    next_p = phases[(idx + 1) % len(phases)]
+                    self.phase_elapsed = 0
+                    log(f"🔄 Overgang naar volgende fase: {next_p}")
+                    log((idx + 1) % len(phases))
+                    if (idx + 1) % len(phases) == 0:
+                        log("setting self.timer = 0")
+                        self.timer = 0
+                    self.current_phase = next_p
+                    self._apply_phase(next_p)
+                    self.socketio.emit('sbr_timer', {
+                        'timer':         self.timer,
+                        'phase':         next_p,
+                        'phase_elapsed': 0,
+                        'phase_target':  self._get_phase_target(next_p),
+                        'actual_level':  None
+                    }, namespace='/sbr')
+                    continue
+            elif phase == 'effluent' and self.effluent_threshold >= 0 and actual is not None:
+                if actual >= self.effluent_threshold:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0

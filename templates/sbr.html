@@ -70,7 +70,11 @@
     <div class="phase-box" id="phase-{{ key }}-box">
       <div class="phase-name">{{ label }}</div>
       <div class="phase-criterion">
-        {{ 'Level' if key=='influent' else 'Time' }}
+        {% if key in ['influent', 'effluent'] %}
+          Level
+        {% else %}
+          Time
+        {% endif %}
       </div>
       <div class="phase-actual" id="{{ key }}-actual">--</div>
       <div class="phase-target" id="{{ key }}-target">--</div>
@@ -79,7 +83,7 @@
           type="number" step="0.1" min="0"
           class="phase-input"
           id="{{ key }}-input"
-          placeholder="{% if key=='influent' %}Set level{% else %}min{% endif %}"
+          placeholder="{% if key in ['influent','effluent'] %}Set level{% else %}min{% endif %}"
         >
         <button class="phase-set-btn" id="btn-set-{{ key }}">Set</button>
       </div>
@@ -102,6 +106,7 @@
   const section    = document.getElementById('sbr-config-section');
 
   const boxes  = {}, actual = {}, target = {}, inputs = {}, btns = {};
+
   let lastPhase = 'influent';
   let isActive  = false;
 
@@ -130,11 +135,15 @@
     btns[p]   = document.getElementById(`btn-set-${p}`);
     btns[p].addEventListener('click', () => {
       const v = inputs[p].valueAsNumber;
+      console.log(`DEBUG: button for phase "${p}" clicked, value =`, v);
       if (isNaN(v) || v < 0) {
         return alert((p === 'influent' ? 'Level' : 'Time') + ' moet ≥ 0 zijn');
       }
       if (p === 'influent') {
+        console.log("DEBUG: emitting sbr_set_threshold:", v);
         sbrSocket.emit('sbr_set_threshold', { threshold: v });
+      } else if (p === 'effluent') {
+        sbrSocket.emit('sbr_set_effluent_threshold', { threshold: v });      
       } else {
         sbrSocket.emit('sbr_set_phase_times', { [p]: v });
       }
@@ -162,7 +171,10 @@
   sbrSocket.on('sbr_phase_times', data => {
     target['influent'].textContent = data.influent_threshold;
     inputs['influent'].value       = data.influent_threshold;
-    ['react','effluent','wait'].forEach(p => {
+    target['effluent'].textContent = data.effluent_threshold;
+    inputs['effluent'].value       = data.effluent_threshold;
+
+    ['react','wait'].forEach(p => {
       inputs[p].value       = data[`${p}_minutes`];
       target[p].textContent = data[`${p}_seconds`];
     });
@@ -178,7 +190,7 @@
       lastPhase = data.phase;
     }
     phases.forEach(p => {
-      if (p === 'influent') {
+      if (p === 'influent' || p === 'effluent') {
         actual[p].textContent = 
           data.actual_level != null
             ? data.actual_level.toFixed(2)
@@ -200,7 +212,7 @@
     updateHighlight(data.phase);
 
     phases.forEach(p => {
-      if (p === 'influent') {
+      if (p === 'influent' || p === 'effluent') {
         actual[p].textContent = 
           data.actual_level != null
             ? data.actual_level.toFixed(2)
@@ -221,6 +233,7 @@
     const lvl = readings.find(r => r.slave_id === 5 && r.channel === 0);
     if (lvl) {
       actual['influent'].textContent = lvl.value.toFixed(2);
+      actual['effluent'].textContent = lvl.value.toFixed(2);
     }
   });
 </script>

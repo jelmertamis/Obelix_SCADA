@@ -37,6 +37,12 @@ def init_db():
         VALUES('sbr_influent_level_threshold','0')
     ''')
 
+    # Default voor de nieuwe effluent-level-threshold
+    c.execute('''
+        INSERT OR IGNORE INTO settings(key, value)
+        VALUES('sbr_effluent_level_threshold','0')
+    ''')
+
     # Overige tabellen
     c.execute('''
         CREATE TABLE IF NOT EXISTS aio_settings (
