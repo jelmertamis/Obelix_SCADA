@@ -221,12 +221,23 @@ def init_socketio(socketio):
         if not ctrl:
             emit('sbr_error', {'error': 'No SBR controller'}, namespace='/sbr')
             return
+
         action = msg.get('action')
         if action == 'toggle':
-            if ctrl.start_event.is_set(): ctrl.stop()
-            else:                         ctrl.start()
-            emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
-            # her-stuur thresholds/tijden
+            if ctrl.start_event.is_set():
+                # Stoppen
+                ctrl.stop()
+            else:
+                # Starten
+                ctrl.start()
+
+            # Éénmalig status + fase sturen
+            emit('sbr_status', {
+                'active': ctrl.start_event.is_set(),
+                'phase':  ctrl.current_phase
+            }, namespace='/sbr')
+
+            # En direct de thresholds/tijden meezenden
             emit('sbr_phase_times', {
                 'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
                 'react_minutes':      ctrl.react_time,
@@ -236,9 +247,15 @@ def init_socketio(socketio):
                 'wait_minutes':       ctrl.wait_time,
                 'wait_seconds':       ctrl._get_phase_target('wait'),
             }, namespace='/sbr')
+
         elif action == 'reset':
             ctrl.reset()
-            emit('sbr_status', {'active': ctrl.start_event.is_set()}, namespace='/sbr')
+
+            emit('sbr_status', {
+                'active': ctrl.start_event.is_set(),
+                'phase':  ctrl.current_phase
+            }, namespace='/sbr')
+
             emit('sbr_phase_times', {
                 'influent_threshold': float(get_setting('sbr_influent_level_threshold', '0')),
                 'react_minutes':      ctrl.react_time,
@@ -248,8 +265,10 @@ def init_socketio(socketio):
                 'wait_minutes':       ctrl.wait_time,
                 'wait_seconds':       ctrl._get_phase_target('wait'),
             }, namespace='/sbr')
+
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
+
 
     @socketio.on('sbr_set_phase_times', namespace='/sbr')
     def ws_sbr_set_phase_times(msg):

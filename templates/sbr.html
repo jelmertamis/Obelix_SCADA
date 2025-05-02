@@ -99,21 +99,29 @@
   const cycleTimer = document.getElementById('cycle-timer');
   const btnToggle  = document.getElementById('btn-toggle');
   const btnReset   = document.getElementById('btn-reset');
+  const section    = document.getElementById('sbr-config-section');
 
-  // caches voor DOM-elementen
   const boxes  = {}, actual = {}, target = {}, inputs = {}, btns = {};
-
-  // houd laatste phase bij om highlight te behouden
   let lastPhase = 'influent';
+  let isActive  = false;
 
-  // helper om highlight in te stellen
-  function updateHighlight(phase) {
+  function updateHighlight(currentPhase) {
+    console.log('[highlight] isActive:', isActive);
+    console.log('[highlight] currentPhase:', currentPhase);
+    console.log('[highlight] lastPhase:', lastPhase);
+
     phases.forEach(p => {
-      boxes[p].classList.toggle('active', p === phase);
+      const shouldHighlight = isActive
+        ? (p === currentPhase)
+        : (p === lastPhase);
+      boxes[p].classList.toggle('active', shouldHighlight);
     });
+
+    console.log('[highlight] actieve boxen:', [...document.querySelectorAll('.phase-box.active')].map(e => e.id));
+    console.log('[highlight] section class:', section.className);
+
   }
 
-  // init references en click-handlers
   phases.forEach(p => {
     boxes[p]  = document.getElementById(`phase-${p}-box`);
     actual[p] = document.getElementById(`${p}-actual`);
@@ -123,7 +131,7 @@
     btns[p].addEventListener('click', () => {
       const v = inputs[p].valueAsNumber;
       if (isNaN(v) || v < 0) {
-        return alert((p === 'influent' ? 'Level' : 'Time') + ' must be ≥ 0');
+        return alert((p === 'influent' ? 'Level' : 'Time') + ' moet ≥ 0 zijn');
       }
       if (p === 'influent') {
         sbrSocket.emit('sbr_set_threshold', { threshold: v });
@@ -140,12 +148,10 @@
     sbrSocket.emit('sbr_control', { action: 'reset' })
   );
 
-  // bij connect, vraag setpoints en threshold
   sbrSocket.on('connect', () => {
     sbrSocket.emit('sbr_get_phase_times');
   });
 
-  // ontvangst setpoints & threshold
   sbrSocket.on('sbr_phase_times', data => {
     target['influent'].textContent = data.influent_threshold;
     inputs['influent'].value       = data.influent_threshold;
@@ -155,27 +161,26 @@
     });
   });
 
-  // Start/Stop status: update knop en behoud highlight
   sbrSocket.on('sbr_status', data => {
-    btnToggle.textContent = data.active ? 'Stop Cycle' : 'Start Cycle';
-    document.getElementById('sbr-config-section')
-      .classList.toggle('paused', !data.active);
-    // herhaal laatste highlight, ook bij Stop
-    updateHighlight(lastPhase);
+    isActive = data.active;
+    btnToggle.textContent = isActive ? 'Stop Cycle' : 'Start Cycle';
+    section.classList.toggle('paused', !isActive);
+    console.log('[status] section classes:', section.className);
+    
+    if (data.phase) {
+      lastPhase = data.phase;
+    }
+    updateHighlight(data.phase);
   });
 
-  // Live timer & phase: update timer, actual (voor tijd-fases en niveau), target en highlight
   sbrSocket.on('sbr_timer', data => {
-    // globale timer
     const m = String(Math.floor(data.timer / 60)).padStart(2,'0'),
           s = String(data.timer % 60).padStart(2,'0');
     cycleTimer.textContent = `Cyclus: ${m}:${s}`;
 
-    // update lastPhase en highlight
     lastPhase = data.phase;
     updateHighlight(data.phase);
 
-    // actual voor tijd (fase_elapsed) en voor influent (from actual_level)
     phases.forEach(p => {
       if (p === 'influent') {
         if (data.actual_level != null) {
@@ -188,13 +193,11 @@
       }
     });
 
-    // altijd target (setpoint) tonen
     if (data.phase_target !== undefined) {
       target[data.phase].textContent = data.phase_target;
     }
   });
 
-  // Continu actual level bijwerken via sensor_updates
   sensorSocket.on('sensor_update', readings => {
     const lvl = readings.find(r => r.slave_id === 5 && r.channel === 0);
     if (lvl) {
