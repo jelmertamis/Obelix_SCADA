@@ -190,10 +190,7 @@
           s = String(data.timer % 60).padStart(2,'0');
     cycleTimer.textContent = `Cyclus: ${m}:${s}`;
 
-    lastPhase = data.phase;
     updateHighlight(data.phase);
-
-    const displayPhase = String(isActive ? data.phase : lastPhase);
 
     phases.forEach(p => {
       if (p === 'influent') {
@@ -201,13 +198,12 @@
           data.actual_level != null
             ? data.actual_level.toFixed(2)
             : '';
-      } else if (p === displayPhase) {
+      } else if (p === data.phase) {
         actual[p].textContent = String(data.phase_elapsed);
       } else {
         actual[p].textContent = '';
       }
     });
-
 
     if (data.phase_target !== undefined) {
       target[data.phase].textContent = data.phase_target;
