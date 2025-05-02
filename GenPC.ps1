@@ -9,9 +9,34 @@ if (Test-Path $OutputFile) {
     Remove-Item $OutputFile -Force
 }
 
-# Step 2: Create new file with timestamp comment
+# Step 2: Create new file with timestamp and Git info
 $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$GitCommit  = git rev-parse HEAD 2>$null
+$GitBranch  = git rev-parse --abbrev-ref HEAD 2>$null
+$GitMessage = git log -1 --pretty=%B 2>$null
+$GitStatus  = git status --porcelain 2>$null
+
+if (-not $GitCommit) {
+    $GitCommit  = "N/A (not a Git repo or Git not installed)"
+    $GitBranch  = "N/A"
+    $GitMessage = "N/A"
+    $GitStatus  = @()
+}
+
 "# Generated on $Timestamp" | Out-File $OutputFile -Encoding UTF8
+"# Git branch: $GitBranch" | Out-File $OutputFile -Append -Encoding UTF8
+"# Git commit: $GitCommit" | Out-File $OutputFile -Append -Encoding UTF8
+"# Commit message: $GitMessage" | Out-File $OutputFile -Append -Encoding UTF8
+
+if ($GitStatus.Count -gt 0) {
+    "# ⚠️ Uncommitted changes present:" | Out-File $OutputFile -Append -Encoding UTF8
+    foreach ($Line in $GitStatus) {
+        "#   $Line" | Out-File $OutputFile -Append -Encoding UTF8
+    }
+} else {
+    "# No uncommitted changes." | Out-File $OutputFile -Append -Encoding UTF8
+}
+"" | Out-File $OutputFile -Append -Encoding UTF8
 
 Write-Host "Starting file aggregation..." -ForegroundColor Cyan
 
