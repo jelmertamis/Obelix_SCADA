@@ -181,17 +181,21 @@
     lastPhase = data.phase;
     updateHighlight(data.phase);
 
+    const displayPhase = String(isActive ? data.phase : lastPhase);
+
     phases.forEach(p => {
       if (p === 'influent') {
-        if (data.actual_level != null) {
-          actual[p].textContent = data.actual_level.toFixed(2);
-        }
+        actual[p].textContent = 
+          data.actual_level != null
+            ? data.actual_level.toFixed(2)
+            : '';
+      } else if (p === displayPhase) {
+        actual[p].textContent = String(data.phase_elapsed);
       } else {
-        actual[p].textContent = (p === data.phase)
-          ? data.phase_elapsed
-          : '0';
+        actual[p].textContent = '';
       }
     });
+
 
     if (data.phase_target !== undefined) {
       target[data.phase].textContent = data.phase_target;
