@@ -1,7 +1,3 @@
-Obelix_SCADA: Projectbeschrijving & Samenwerkingsrichtlijn (v1.2)
-Versie: 1.2
-Laatste update: 28 april 2025
-
 Overzicht
 Obelix_SCADA is een professionele, modulaire SCADA-oplossing voor real-time monitoring en besturing van industriële systemen. Kan lokaal draaien met DummyModbus of op een Raspberry Pi 5 met echte RS-485 hardware.
 
@@ -14,27 +10,6 @@ Technologie-stack
 Ontwikkel- en productieomgeving
 • Lokaal: Windows 11, VS Code, virtualenv, python app.py
 • Productie: Raspberry Pi 5 (Bookworm/Debian 12), USB-RS485 adapter, webinterface op poort 5001
-
-Projectstructuur
-app.py
-obelix/
- config.py
- database.py
- modbus_client.py
- routes.py
- socketio_events.py
- r302_manager.py
- sensor_monitor.py
-templates/
- base.html
- dashboard.html
- relays.html
- R302.html
-static/
- css/main.css
- js/relays.js
-settings.db (gitignored)
-sensor_data.db (gitignored)
 
 Git-strategie
 Branches: dev (actief), master (stable), backup-v1
