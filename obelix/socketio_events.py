@@ -54,6 +54,8 @@ def init_socketio(socketio):
             'wait_seconds':       ctrl._get_phase_target('wait'),
             'dose_nutrients_minutes': ctrl.dose_time,
             'dose_nutrients_seconds': int(ctrl.dose_time * 60),
+            'wait_after_N_minutes':   ctrl.wait_after_N_time,
+            'wait_after_N_seconds':   int(ctrl.wait_after_N_time * 60),
         }, namespace='/sbr')
 
 
@@ -259,7 +261,7 @@ def init_socketio(socketio):
             return
         try:
             updates = {}
-            for key in ('react','wait','dose_nutrients'):
+            for key in ('react','wait','dose_nutrients','wait_after_N'):
                 if key in msg:
                     v = float(msg[key])
                     if v < 0:
@@ -268,7 +270,9 @@ def init_socketio(socketio):
             ctrl.set_phase_times(
                 updates.get('react',    ctrl.react_time),
                 updates.get('wait',     ctrl.wait_time),
-                updates.get('dose_nutrients', ctrl.dose_time)
+                updates.get('dose_nutrients', ctrl.dose_time),
+                updates.get('wait_after_N', ctrl.wait_after_N_time)
+
             )
             broadcast_phase_settings(ctrl)
         except Exception as e:

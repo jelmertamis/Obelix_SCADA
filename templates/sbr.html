@@ -73,7 +73,8 @@
          ('react','React'),
          ('effluent','Effluent'),
          ('wait','Wait'),
-         ('dose_nutrients', 'Dose nutrients')
+         ('dose_nutrients', 'Dose nutrients'),
+         ('wait_after_N', 'Wait after N')
        ] %}
     <div class="phase-box" id="phase-{{ key }}-box">
       <div class="phase-name">{{ label }}</div>
@@ -106,7 +107,7 @@
 <script>
   const sbrSocket    = io('/sbr');
   const sensorSocket = io('/sensors');
-  const phases       = ['influent','react','effluent','wait','dose_nutrients'];
+  const phases       = ['influent','react','effluent','wait','dose_nutrients','wait_after_N'];
 
   const cycleTimer = document.getElementById('cycle-timer');
   const btnToggle  = document.getElementById('btn-toggle');
@@ -182,7 +183,7 @@
     target['effluent'].textContent = data.effluent_threshold;
     inputs['effluent'].value       = data.effluent_threshold;
 
-    ['react','wait','dose_nutrients'].forEach(p => {
+    ['react','wait','dose_nutrients','wait_after_N'].forEach(p => {
       inputs[p].value       = data[`${p}_minutes`];
       target[p].textContent = data[`${p}_seconds`];
     });

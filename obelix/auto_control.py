@@ -23,7 +23,8 @@ class SBRController:
         self.timer         = 0
 
         # Fase-cyclus
-        self._phase_cycle  = itertools.cycle(['influent', 'react', 'effluent', 'wait', 'dose_nutrients'])
+        self.phases = ['influent', 'react', 'effluent', 'wait', 'dose_nutrients','wait_after_N']
+        self._phase_cycle  = itertools.cycle(self.phases)
         self.current_phase = None
         self.phase_elapsed = 0
 
@@ -32,6 +33,7 @@ class SBRController:
         self.react_time    = float(get_setting('sbr_react_time_minutes',    DEFAULT_PHASE_MIN))
         self.wait_time     = float(get_setting('sbr_wait_time_minutes',     DEFAULT_PHASE_MIN))
         self.dose_time     = float(get_setting('sbr_dose_nutrients_time_minutes', DEFAULT_PHASE_MIN))
+        self.wait_after_N_time = float(get_setting('sbr_wait_after_N_time_minutes', DEFAULT_PHASE_MIN))
 
         # Level-drempel
         self.influent_threshold = float(get_setting('sbr_influent_level_threshold', '0'))
@@ -55,6 +57,7 @@ class SBRController:
             'react':            int(self.react_time * 60),
             'wait':             int(self.wait_time * 60),
             'dose_nutrients':   int(self.dose_time * 60),
+            'wait_after_N':     int(self.wait_after_N_time * 60),
         }
 
     def _get_phase_target(self, phase):
@@ -70,16 +73,19 @@ class SBRController:
         return self.phase_end.get(phase, 0)
 
 
-    def set_phase_times(self, react, wait, dose_nutrients):
+    def set_phase_times(self, react, wait, dose_nutrients, wait_after_N):
         # 1) Persist in de DB met de juiste keys
         set_setting('sbr_react_time_minutes',          str(react))
         set_setting('sbr_wait_time_minutes',          str(wait))
         set_setting('sbr_dose_nutrients_time_minutes', str(dose_nutrients))
+        set_setting('sbr_wait_after_N_time_minutes', str(wait_after_N))
 
         # 2) Update je instance-variabelen
         self.react_time   = react
         self.wait_time    = wait
         self.dose_time    = dose_nutrients
+        self.wait_after_N_time = wait_after_N
+
 
         # 3) Herbereken de phase_end dict
         self._update_phase_end_conditions()
@@ -137,6 +143,8 @@ class SBRController:
             'wait_seconds':            self._get_phase_target('wait'),
             'dose_nutrients_minutes':  self.dose_time,
             'dose_nutrients_seconds':  self._get_phase_target('dose_nutrients'),
+            'wait_after_N_minutes':    self.wait_after_N_time,
+            'wait_after_N_seconds':    self._get_phase_target('wait_after_N'),            
         }, namespace='/sbr')
 
 
@@ -191,7 +199,7 @@ class SBRController:
         global sbr_controller
         sbr_controller = self
         log("🔄 SBR thread started")
-        phases = ['influent', 'react', 'effluent', 'wait', 'dose_nutrients']
+        phases = self.phases
 
         while True:
             if not self.start_event.is_set():
