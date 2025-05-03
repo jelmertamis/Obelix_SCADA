@@ -45,6 +45,11 @@
     background: #007bff; color: #fff; cursor: pointer;
   }
   .phase-set-btn:hover { background: #0056b3; }
+  .control_button {
+    padding: 1.5rem 1rem; border: none; border-radius: 0.25rem;
+    background: #007bff; color: #fff; cursor: pointer;
+    font-weight: bold;
+  }
 </style>
 {% endblock %}
 
@@ -56,8 +61,8 @@
     Cyclus: 00:00
   </div>
   <div style="margin-bottom:1rem;">
-    <button id="btn-toggle" class="phase-set-btn">Start Cycle</button>
-    <button id="btn-reset"  class="phase-set-btn">Reset Cycle</button>
+    <button id="btn-toggle" class="control_button">Start Cycle</button>
+    <button id="btn-reset"  class="control_button">Reset Cycle</button>
   </div>
 
   <div class="sbr-phase-list">
@@ -191,10 +196,10 @@
     }
     phases.forEach(p => {
       if (p === 'influent' || p === 'effluent') {
-        actual[p].textContent = 
-          data.actual_level != null
-            ? data.actual_level.toFixed(2)
-            : '';
+        //actual[p].textContent = 
+          //data.actual_level != null
+          //  ? data.actual_level.toFixed(2)
+          //  : '';
       } else if (p === data.phase) {
         actual[p].textContent = String(data.phase_elapsed);
       } else {
@@ -213,10 +218,10 @@
 
     phases.forEach(p => {
       if (p === 'influent' || p === 'effluent') {
-        actual[p].textContent = 
-          data.actual_level != null
-            ? data.actual_level.toFixed(2)
-            : '';
+        //actual[p].textContent = 
+          //data.actual_level != null
+          //  ? data.actual_level.toFixed(2)
+          //  : '';
       } else if (p === data.phase) {
         actual[p].textContent = String(data.phase_elapsed);
       } else {
@@ -232,8 +237,8 @@
   sensorSocket.on('sensor_update', readings => {
     const lvl = readings.find(r => r.slave_id === 5 && r.channel === 0);
     if (lvl) {
-      actual['influent'].textContent = lvl.value.toFixed(2);
-      actual['effluent'].textContent = lvl.value.toFixed(2);
+      actual['influent'].textContent = lvl.value.toFixed(1);
+      actual['effluent'].textContent = lvl.value.toFixed(1);
     }
   });
 </script>
