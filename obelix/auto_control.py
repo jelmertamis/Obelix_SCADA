@@ -23,16 +23,15 @@ class SBRController:
         self.timer         = 0
 
         # Fase-cyclus
-        self._phase_cycle  = itertools.cycle(['influent', 'react', 'effluent', 'wait'])
+        self._phase_cycle  = itertools.cycle(['influent', 'react', 'effluent', 'wait', 'dose_nutrients'])
         self.current_phase = None
         self.phase_elapsed = 0
 
         # Laad fasetijden
-        base = get_setting('sbr_cycle_time_minutes', '7')
-        self.influent_time = float(get_setting('sbr_influent_time_minutes') or base)
-        self.react_time    = float(get_setting('sbr_react_time_minutes')    or base)
-        self.effluent_time = float(get_setting('sbr_effluent_time_minutes') or base)
-        self.wait_time     = float(get_setting('sbr_wait_time_minutes')     or '0.5')
+        DEFAULT_PHASE_MIN = '7'
+        self.react_time    = float(get_setting('sbr_react_time_minutes',    DEFAULT_PHASE_MIN))
+        self.wait_time     = float(get_setting('sbr_wait_time_minutes',     DEFAULT_PHASE_MIN))
+        self.dose_time     = float(get_setting('sbr_dose_nutrients_time_minutes', DEFAULT_PHASE_MIN))
 
         # Level-drempel
         self.influent_threshold = float(get_setting('sbr_influent_level_threshold', '0'))
@@ -53,10 +52,9 @@ class SBRController:
 
     def _update_phase_end_conditions(self):
         self.phase_end = {
-            'influent': int(self.influent_time * 60),
-            'react':    int(self.react_time    * 60),
-            'effluent': int(self.effluent_time * 60),
-            'wait':     int(self.wait_time     * 60),
+            'react':            int(self.react_time * 60),
+            'wait':             int(self.wait_time * 60),
+            'dose_nutrients':   int(self.dose_time * 60),
         }
 
     def _get_phase_target(self, phase):
@@ -72,15 +70,24 @@ class SBRController:
         return self.phase_end.get(phase, 0)
 
 
-    def set_phase_times(self, infl, react, effl, wait):
-        set_setting('sbr_influent_time_minutes', str(infl))
-        set_setting('sbr_react_time_minutes',    str(react))
-        set_setting('sbr_effluent_time_minutes', str(effl))
-        set_setting('sbr_wait_time_minutes',     str(wait))
-        self.influent_time, self.react_time, self.effluent_time, self.wait_time = infl, react, effl, wait
+    def set_phase_times(self, react, wait, dose_nutrients):
+        # 1) Persist in de DB met de juiste keys
+        set_setting('sbr_react_time_minutes',          str(react))
+        set_setting('sbr_wait_time_minutes',          str(wait))
+        set_setting('sbr_dose_nutrients_time_minutes', str(dose_nutrients))
+
+        # 2) Update je instance-variabelen
+        self.react_time   = react
+        self.wait_time    = wait
+        self.dose_time    = dose_nutrients
+
+        # 3) Herbereken de phase_end dict
         self._update_phase_end_conditions()
-        log(f"SBR times updated: Influent target={self._get_phase_target('influent')}s")
+
+        # 4) Log en push naar de UI
+        log(f"SBR times updated: react={react}m, wait={wait}m, dose={dose_nutrients}m")
         self._emit_phase_times()
+
 
     def start(self):
         if not self.start_event.is_set():
@@ -124,15 +131,14 @@ class SBRController:
 
     def _emit_phase_times(self):
         self.socketio.emit('sbr_phase_times', {
-            'influent_minutes': self.influent_time,
-            'influent_seconds': self._get_phase_target('influent'),
-            'react_minutes':    self.react_time,
-            'react_seconds':    self._get_phase_target('react'),
-            'effluent_minutes': self.effluent_time,
-            'effluent_seconds': self._get_phase_target('effluent'),
-            'wait_minutes':     self.wait_time,
-            'wait_seconds':     self._get_phase_target('wait'),
+            'react_minutes':           self.react_time,
+            'react_seconds':           self._get_phase_target('react'),
+            'wait_minutes':            self.wait_time,
+            'wait_seconds':            self._get_phase_target('wait'),
+            'dose_nutrients_minutes':  self.dose_time,
+            'dose_nutrients_seconds':  self._get_phase_target('dose_nutrients'),
         }, namespace='/sbr')
+
 
     def _auto_off_all(self):
         inst = self.clients[self.r302_unit]
@@ -157,7 +163,11 @@ class SBRController:
         if phase == 'wait':
             return self._auto_off_all()
         inst = self.clients[self.r302_unit]
-        coil_map = {'influent': 0, 'effluent': 1}
+        coil_map = {
+            'influent': 0,
+            'effluent': 1,
+            'dose_nutrients': 2
+            }
         target   = coil_map.get(phase)
         for coil in Config.R302_RELAY_MAPPING:
             mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
@@ -181,7 +191,7 @@ class SBRController:
         global sbr_controller
         sbr_controller = self
         log("🔄 SBR thread started")
-        phases = ['influent', 'react', 'effluent', 'wait']
+        phases = ['influent', 'react', 'effluent', 'wait', 'dose_nutrients']
 
         while True:
             if not self.start_event.is_set():

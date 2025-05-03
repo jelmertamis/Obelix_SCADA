@@ -50,10 +50,10 @@ def init_socketio(socketio):
             'effluent_threshold': float(get_setting('sbr_effluent_level_threshold', '0')),
             'react_minutes':      ctrl.react_time,
             'react_seconds':      ctrl._get_phase_target('react'),
-            'effluent_minutes':   ctrl.effluent_time,
-            'effluent_seconds':   ctrl._get_phase_target('effluent'),
             'wait_minutes':       ctrl.wait_time,
             'wait_seconds':       ctrl._get_phase_target('wait'),
+            'dose_nutrients_minutes': ctrl.dose_time,
+            'dose_nutrients_seconds': int(ctrl.dose_time * 60),
         }, namespace='/sbr')
 
 
@@ -259,17 +259,16 @@ def init_socketio(socketio):
             return
         try:
             updates = {}
-            for key in ('react','effluent','wait'):
+            for key in ('react','wait','dose_nutrients'):
                 if key in msg:
                     v = float(msg[key])
                     if v < 0:
                         raise ValueError(f"Tijd voor {key} moet ≥ 0 zijn")
                     updates[key] = v
             ctrl.set_phase_times(
-                ctrl.influent_time,
                 updates.get('react',    ctrl.react_time),
-                updates.get('effluent', ctrl.effluent_time),
-                updates.get('wait',     ctrl.wait_time)
+                updates.get('wait',     ctrl.wait_time),
+                updates.get('dose_nutrients', ctrl.dose_time)
             )
             broadcast_phase_settings(ctrl)
         except Exception as e:
