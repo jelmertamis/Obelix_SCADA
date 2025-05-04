@@ -29,13 +29,13 @@ class SBRController:
         self.phase_elapsed = 0
 
         # Laad fasetijden
-        DEFAULT_PHASE_MIN = '7'
+        DEFAULT_PHASE_MIN = 7
         self.react_time    = float(get_setting('sbr_react_time_minutes',    DEFAULT_PHASE_MIN))
         self.wait_time     = float(get_setting('sbr_wait_time_minutes',     DEFAULT_PHASE_MIN))
         self.dose_time     = float(get_setting('sbr_dose_nutrients_time_minutes', DEFAULT_PHASE_MIN))
         self.wait_after_N_time = float(get_setting('sbr_wait_after_N_time_minutes', DEFAULT_PHASE_MIN))
 
-        DEFAULT_CYCLE_MAX = '720'
+        DEFAULT_CYCLE_MAX = 720
         self.cycle_time_max = float(get_setting('sbr_cycle_time_max_minutes', DEFAULT_CYCLE_MAX))
 
         # Level-drempel
@@ -48,8 +48,18 @@ class SBRController:
             if u['type']=='analog' and u['slave_id']==5
         )
         self.level_channel = 0
-
+        
         self._update_phase_end_conditions()
+
+        # Temperatuursensor op slave ID 5, kanaal 2
+        self.temp_channel  = 2
+
+        # Laad heating valve setpoints (°C)
+        DEFAULT_HEAT_ON  = 30
+        DEFAULT_HEAT_OFF = 25
+        self.heat_on_temp  = float(get_setting('heating_valve_on_temp',  DEFAULT_HEAT_ON))
+        self.heat_off_temp = float(get_setting('heating_valve_off_temp', DEFAULT_HEAT_OFF))
+
 
         # Init UI
         self._emit_status()
@@ -107,7 +117,7 @@ class SBRController:
             self.start_event.set()
             log("▶ SBR START")
             self._emit_status()
-            self._apply_phase(self.current_phase)
+            self._apply_phase_logic_pumps(self.current_phase)
 
     def stop(self):
         if self.start_event.is_set():
@@ -122,7 +132,7 @@ class SBRController:
         self.phase_elapsed = 0
         log("🔄 SBR RESET to influent")
         if self.start_event.is_set():
-            self._apply_phase('influent')
+            self._apply_phase_logic_pumps('influent')
         else:
             self._auto_off_all()
         self._emit_status()
@@ -171,7 +181,7 @@ class SBRController:
                            R302Controller(self.r302_unit).get_status(),
                            namespace='/r302')
 
-    def _apply_phase(self, phase):
+    def _apply_phase_logic_pumps(self, phase):
         if phase == 'wait':
             return self._auto_off_all()
         inst = self.clients[self.r302_unit]
@@ -181,7 +191,7 @@ class SBRController:
             'dose_nutrients': 2
             }
         target   = coil_map.get(phase)
-        for coil in Config.R302_RELAY_MAPPING:
+        for coil in coil_map.values(): # Config.R302_RELAY_MAPPING:
             mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
             if mode != 'AUTO':
                 continue
@@ -198,7 +208,57 @@ class SBRController:
         self.socketio.emit('r302_update',
                            R302Controller(self.r302_unit).get_status(),
                            namespace='/r302')
+    
+    def _check_heating_valve(self, temp_value):
+        """Open/sluit coil 5 (heating valve) op basis van setpoints, alleen in AUTO."""
+        from obelix.r302_manager import R302Controller
+        coil = 5
+        # Alleen handelen als de mode op AUTO staat
+        mode = R302Controller(self.r302_unit).get_mode(coil)
+        if mode != 'AUTO':
+            return
 
+        inst = self.clients[self.r302_unit]
+        current_on = (get_relay_state(self.r302_unit, coil) == 'ON')
+
+        if temp_value <= self.heat_on_temp and not current_on:
+            with modbus_lock:
+                inst.write_bit(coil, True, functioncode=5)
+            save_relay_state(self.r302_unit, coil, 'ON')
+            self.socketio.emit('relay_toggled', {
+                'unit_idx': self.r302_unit,
+                'coil_idx': coil,
+                'state':    'ON'
+            }, namespace='/relays')
+            self.socketio.emit('r302_update',
+                               R302Controller(self.r302_unit).get_status(),
+                               namespace='/r302')
+
+        elif temp_value >= self.heat_off_temp and current_on:
+            with modbus_lock:
+                inst.write_bit(coil, False, functioncode=5)
+            save_relay_state(self.r302_unit, coil, 'OFF')
+            self.socketio.emit('relay_toggled', {
+                'unit_idx': self.r302_unit,
+                'coil_idx': coil,
+                'state':    'OFF'
+            }, namespace='/relays')
+            self.socketio.emit('r302_update',
+                               R302Controller(self.r302_unit).get_status(),
+                               namespace='/r302')
+
+    def _monitor_temperature(self):
+        """Lees en verwerk temperatuursensor, ongeacht cyclusstatus."""
+        try:
+            dummy = get_dummy_value(self.level_unit, self.temp_channel)
+            raw = dummy if dummy is not None else self.clients[self.level_unit].read_register(self.temp_channel, functioncode=4)
+            cal = get_calibration(self.level_unit, self.temp_channel)
+            temp = raw * cal['scale'] + cal['offset']
+            self._check_heating_valve(temp)
+        except Exception as e:
+            log(f"Error monitoring temperature: {e}")  
+    
+    
     def run(self):
         global sbr_controller
         sbr_controller = self
@@ -206,6 +266,9 @@ class SBRController:
         phases = self.phases
 
         while True:
+            # 1) Altijd temperatuur monitoren
+            self._monitor_temperature()
+            
             if not self.start_event.is_set():
                 self.socketio.sleep(1)
                 continue
@@ -250,7 +313,7 @@ class SBRController:
                         log("setting self.timer = 0")
                         self.timer = 0
                     self.current_phase = next_p
-                    self._apply_phase(next_p)
+                    self._apply_phase_logic_pumps(next_p)
                     self.socketio.emit('sbr_timer', {
                         'timer':         self.timer,
                         'phase':         next_p,
@@ -270,7 +333,7 @@ class SBRController:
                         log("setting self.timer = 0")
                         self.timer = 0
                     self.current_phase = next_p
-                    self._apply_phase(next_p)
+                    self._apply_phase_logic_pumps(next_p)
                     self.socketio.emit('sbr_timer', {
                         'timer':         self.timer,
                         'phase':         next_p,
@@ -291,7 +354,7 @@ class SBRController:
                         log("setting self.timer = 0")
                         self.timer = 0
                     self.current_phase = next_p
-                    self._apply_phase(next_p)
+                    self._apply_phase_logic_pumps(next_p)
                     self.socketio.emit('sbr_timer', {
                         'timer':         self.timer,
                         'phase':         next_p,
@@ -302,7 +365,7 @@ class SBRController:
                     continue
 
             if self.phase_elapsed == 0:
-                self._apply_phase(phase)
+                self._apply_phase_logic_pumps(phase)
 
             # Emit status met actual_level
             self.socketio.emit('sbr_timer', {

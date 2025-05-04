@@ -69,7 +69,9 @@
     <p id="cycle-max-display" style="margin:0.5rem 0; font-weight:bold;">
       Huidige limiet: <span id="cycle-max-text">--</span> min
     </p>
-    
+    <p id="heat-set-display" style="margin:0.5rem 0; font-weight:bold;">
+      Heat ON: <span id="heat-on-text">--</span> °C, Heat OFF: <span id="heat-off-text">--</span> °C
+    </p>
 
     <!-- Nieuw: Max Cycle Time instellen -->
     <label style="font-size:1rem; margin:0 0 0 1rem;">
@@ -77,8 +79,20 @@
       <input type="number" id="cycle-max-input" min="0" step="1" value="" style="width:4em; padding:0.3rem; border:1px solid #ccc; border-radius:0.25rem;">
     </label>
     <button id="btn-set-cycle-max" class="phase-set-btn">Set</button>
+    
+    <!-- Nieuw: Heating Valve setpoints instellen -->
+    <label style="font-size:1rem; margin:0 1rem 0 0;">
+      Heat ON (°C):
+      <input type="number" id="heat-on-input" min="0" step="0.1" value="" style="width:4em; padding:0.3rem; border:1px solid #ccc; border-radius:0.25rem;">
+    </label>
+    <label style="font-size:1rem; margin-right:1rem;">
+      Heat OFF (°C):
+      <input type="number" id="heat-off-input" min="0" step="0.1" value="" style="width:4em; padding:0.3rem; border:1px solid #ccc; border-radius:0.25rem;">
+    </label>
+    <button id="btn-set-heat" class="phase-set-btn">Set Heat</button>
+  
   </div>
-
+  
   <div class="sbr-phase-list">
     {% for key,label in [
          ('influent','Influent'),
@@ -125,7 +139,10 @@
   const btnToggle  = document.getElementById('btn-toggle');
   const btnReset   = document.getElementById('btn-reset');
   const btnSetMax  = document.getElementById('btn-set-cycle-max');
-  const maxInput      = document.getElementById('cycle-max-input');
+  const maxInput   = document.getElementById('cycle-max-input');
+  const btnSetHeat   = document.getElementById('btn-set-heat');
+  const heatOnInput  = document.getElementById('heat-on-input');
+  const heatOffInput = document.getElementById('heat-off-input');
   const section    = document.getElementById('sbr-config-section');
 
   const boxes  = {}, actual = {}, target = {}, inputs = {}, btns = {};
@@ -195,6 +212,17 @@
   });
   maxInput.addEventListener('keydown', e => { if(e.key==='Enter'){ btnSetMax.click(); e.preventDefault(); } });
 
+  // Set heating setpoints
+  btnSetHeat.addEventListener('click', () => {
+    const on  = heatOnInput.valueAsNumber;
+    const off = heatOffInput.valueAsNumber;
+    if (isNaN(on) || isNaN(off) || off < on) return alert('Voer geldige Heat ON/Off waarden in (OFF ≤ ON)');
+    sbrSocket.emit('sbr_set_heating_setpoints', { on_temp: on, off_temp: off });
+  });
+  heatOnInput.addEventListener('keydown', e => { if (e.key==='Enter') { btnSetHeat.click(); e.preventDefault(); } });
+  heatOffInput.addEventListener('keydown', e => { if (e.key==='Enter') { btnSetHeat.click(); e.preventDefault(); } });
+
+
 
 
   sbrSocket.on('connect', () => {
@@ -213,6 +241,12 @@
     });
     maxInput.value = data.cycle_time_max_minutes;
     document.getElementById('cycle-max-text').textContent = data.cycle_time_max_minutes;
+    
+    document.getElementById('heat-on-text').textContent  = data.heating_on_temp;
+    document.getElementById('heat-off-text').textContent = data.heating_off_temp;
+    heatOnInput.value  = data.heating_on_temp;
+    heatOffInput.value = data.heating_off_temp;
+
   });
 
   sbrSocket.on('sbr_status', data => {

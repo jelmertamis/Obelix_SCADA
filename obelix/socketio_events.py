@@ -57,6 +57,8 @@ def init_socketio(socketio):
             'wait_after_N_minutes':   ctrl.wait_after_N_time,
             'wait_after_N_seconds':   int(ctrl.wait_after_N_time * 60),
             'cycle_time_max_minutes': ctrl.cycle_time_max,
+            'heating_on_temp':  ctrl.heat_on_temp,
+            'heating_off_temp':  ctrl.heat_off_temp,
         }, namespace='/sbr')
 
 
@@ -181,7 +183,7 @@ def init_socketio(socketio):
                 if ctrl.current_phase in ('react', 'wait'):
                     ctrl._auto_off_all()
                 else:
-                    ctrl._apply_phase(ctrl.current_phase)
+                    ctrl._apply_phase_logic_pumps(ctrl.current_phase)
 
     # ----- SBR CYCLE -----
     @socketio.on('connect', namespace='/sbr')
@@ -319,4 +321,19 @@ def init_socketio(socketio):
         ctrl.cycle_time_max = val
         broadcast_phase_settings(ctrl)
 
+    @socketio.on('sbr_set_heating_setpoints', namespace='/sbr')
+    def ws_sbr_set_heating_setpoints(msg):
+        try:
+            on_t  = float(msg.get('on_temp',  0))
+            off_t = float(msg.get('off_temp', 0))
+            if off_t < on_t:
+                raise ValueError("Off-temp mag niet hoger dan on-temp zijn")
+            set_setting('heating_valve_on_temp',  str(on_t))
+            set_setting('heating_valve_off_temp', str(off_t))
+            ctrl = auto_control.sbr_controller
+            ctrl.heat_on_temp  = on_t
+            ctrl.heat_off_temp = off_t
+            broadcast_phase_settings(ctrl)
+        except Exception as e:
+            emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 
