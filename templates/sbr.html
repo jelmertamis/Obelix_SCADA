@@ -65,6 +65,18 @@
   <div style="margin-bottom:1rem;">
     <button id="btn-toggle" class="control_button">Start Cycle</button>
     <button id="btn-reset"  class="control_button">Reset Cycle</button>
+
+    <p id="cycle-max-display" style="margin:0.5rem 0; font-weight:bold;">
+      Huidige limiet: <span id="cycle-max-text">--</span> min
+    </p>
+    
+
+    <!-- Nieuw: Max Cycle Time instellen -->
+    <label style="font-size:1rem; margin:0 0 0 1rem;">
+      Max Cycle Time (min):
+      <input type="number" id="cycle-max-input" min="0" step="1" value="" style="width:4em; padding:0.3rem; border:1px solid #ccc; border-radius:0.25rem;">
+    </label>
+    <button id="btn-set-cycle-max" class="phase-set-btn">Set</button>
   </div>
 
   <div class="sbr-phase-list">
@@ -112,6 +124,8 @@
   const cycleTimer = document.getElementById('cycle-timer');
   const btnToggle  = document.getElementById('btn-toggle');
   const btnReset   = document.getElementById('btn-reset');
+  const btnSetMax  = document.getElementById('btn-set-cycle-max');
+  const maxInput      = document.getElementById('cycle-max-input');
   const section    = document.getElementById('sbr-config-section');
 
   const boxes  = {}, actual = {}, target = {}, inputs = {}, btns = {};
@@ -173,6 +187,16 @@
     sbrSocket.emit('sbr_control', { action: 'reset' })
   );
 
+  // Zet nieuwe max
+  btnSetMax.addEventListener('click', () => {
+    const v = maxInput.valueAsNumber;
+    if (isNaN(v) || v < 0) return alert('Max Cycle Time moet ≥ 0 zijn');
+    sbrSocket.emit('sbr_set_cycle_time_max', { max_minutes: v });
+  });
+  maxInput.addEventListener('keydown', e => { if(e.key==='Enter'){ btnSetMax.click(); e.preventDefault(); } });
+
+
+
   sbrSocket.on('connect', () => {
     sbrSocket.emit('sbr_get_phase_times');
   });
@@ -187,6 +211,8 @@
       inputs[p].value       = data[`${p}_minutes`];
       target[p].textContent = data[`${p}_seconds`];
     });
+    maxInput.value = data.cycle_time_max_minutes;
+    document.getElementById('cycle-max-text').textContent = data.cycle_time_max_minutes;
   });
 
   sbrSocket.on('sbr_status', data => {

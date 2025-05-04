@@ -35,6 +35,9 @@ class SBRController:
         self.dose_time     = float(get_setting('sbr_dose_nutrients_time_minutes', DEFAULT_PHASE_MIN))
         self.wait_after_N_time = float(get_setting('sbr_wait_after_N_time_minutes', DEFAULT_PHASE_MIN))
 
+        DEFAULT_CYCLE_MAX = '720'
+        self.cycle_time_max = float(get_setting('sbr_cycle_time_max_minutes', DEFAULT_CYCLE_MAX))
+
         # Level-drempel
         self.influent_threshold = float(get_setting('sbr_influent_level_threshold', '0'))
         self.effluent_threshold = float(get_setting('sbr_effluent_level_threshold', '0'))
@@ -144,7 +147,8 @@ class SBRController:
             'dose_nutrients_minutes':  self.dose_time,
             'dose_nutrients_seconds':  self._get_phase_target('dose_nutrients'),
             'wait_after_N_minutes':    self.wait_after_N_time,
-            'wait_after_N_seconds':    self._get_phase_target('wait_after_N'),            
+            'wait_after_N_seconds':    self._get_phase_target('wait_after_N'),
+            'cycle_time_max_minutes':  self.cycle_time_max            
         }, namespace='/sbr')
 
 
@@ -204,6 +208,12 @@ class SBRController:
         while True:
             if not self.start_event.is_set():
                 self.socketio.sleep(1)
+                continue
+            
+            # Controleer op maximale cyclus duur
+            if self.timer >= self.cycle_time_max * 60:
+                log("Cycle time exceeded max, restarting cycle at influent")
+                self.reset()
                 continue
 
             phase = self.current_phase or 'influent'

@@ -56,6 +56,7 @@ def init_socketio(socketio):
             'dose_nutrients_seconds': int(ctrl.dose_time * 60),
             'wait_after_N_minutes':   ctrl.wait_after_N_time,
             'wait_after_N_seconds':   int(ctrl.wait_after_N_time * 60),
+            'cycle_time_max_minutes': ctrl.cycle_time_max,
         }, namespace='/sbr')
 
 
@@ -309,4 +310,13 @@ def init_socketio(socketio):
             broadcast_phase_settings(ctrl)
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
+
+    @socketio.on('sbr_set_cycle_time_max', namespace='/sbr')
+    def ws_sbr_set_cycle_time_max(msg):
+        val = float(msg.get('max_minutes', 0))
+        set_setting('sbr_cycle_time_max_minutes', str(val))
+        ctrl = auto_control.sbr_controller
+        ctrl.cycle_time_max = val
+        broadcast_phase_settings(ctrl)
+
 
