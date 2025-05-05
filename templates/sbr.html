@@ -53,6 +53,8 @@
   }
   .control_button:hover { background: #0056b3; }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/compressor-modal.css') }}">
+
 {% endblock %}
 
 {% block content %}
@@ -91,6 +93,8 @@
     </label>
     <button id="btn-set-heat" class="phase-set-btn">Set Heat</button>
   
+    <button id="compressor-open" class="control_button">Compressor Instellingen</button>
+
   </div>
   
   <div class="sbr-phase-list">
@@ -126,9 +130,67 @@
     {% endfor %}
   </div>
 </section>
+
+<!-- Compressor Modal (in sbr.html) -->
+<div id="compressor-modal" class="modal">
+  <div class="modal-content">
+    <span id="compressor-close" class="modal-close">&times;</span>
+    <h2>Compressor Instellingen</h2>
+
+    <form id="compressor-form">
+      <table class="compressor-table">
+        <thead>
+          <tr>
+            <th>Fase</th>
+            <th>K303 ON/OFF</th><th>Huidig</th><th>K303 %</th><th>Huidig</th>
+            <th>K304 ON/OFF</th><th>Huidig</th><th>K304 %</th><th>Huidig</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for phase in ['influent','react','effluent','wait','dose_nutrients','wait_after_N'] %}
+          <tr data-phase="{{ phase }}">
+            <td>{{ phase.replace('_',' ')|upper }}</td>
+            <td>
+              <select name="{{ phase }}_k303_on" class="compressor-onoff">
+                <option>ON</option><option>OFF</option>
+              </select>
+            </td>
+            <td><span id="{{phase}}_k303_on_current">–</span></td>
+
+            <td>
+              <input type="number" name="{{ phase }}_k303_pct" class="compressor-percent">
+            </td>
+            <td><span id="{{phase}}_k303_pct_current">–</span></td>
+
+            <td>
+              <select name="{{ phase }}_k304_on" class="compressor-onoff">
+                <option>ON</option><option>OFF</option>
+              </select>
+            </td>
+            <td><span id="{{phase}}_k304_on_current">–</span></td>
+
+            <td>
+              <input type="number" name="{{ phase }}_k304_pct" class="compressor-percent">
+            </td>
+            <td><span id="{{phase}}_k304_pct_current">–</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="actions" style="text-align:right; margin-top:1rem;">
+        <button type="submit" id="compressor-save" class="btn">Opslaan</button>
+      </div>
+    </form>
+
+  </div>
+</div>
+
+
 {% endblock %}
 
 {% block scripts %}
 <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='js/sbr.js') }}"></script>
+<script src="{{ url_for('static', filename='js/compressor-modal.js') }}"></script>
 {% endblock %}

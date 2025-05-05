@@ -337,3 +337,43 @@ def init_socketio(socketio):
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
 
+    @socketio.on('set_compressor_settings', namespace='/sbr')
+    def ws_set_compressor_setting(msg):
+        """
+        Verwacht msg = {
+        phase: { k303_on, k303_pct, k304_on, k304_pct },
+        …
+        }
+        """
+        log(f"📥 Ontvangen set_compressor_settings: {msg}")
+        try:
+            for phase, cfg in msg.items():
+                set_setting(f'compressor_{phase}_k303_mode', cfg['k303_on'])
+                set_setting(f'compressor_{phase}_k303_pct',  cfg['k303_pct'])
+                set_setting(f'compressor_{phase}_k304_mode', cfg['k304_on'])
+                set_setting(f'compressor_{phase}_k304_pct',  cfg['k304_pct'])
+            emit('compressor_updated', msg, namespace='/sbr')
+        except Exception as e:
+            emit('sbr_error',
+                {'error': f"Compressorsetting mislukt: {e}"},
+                namespace='/sbr')
+
+
+    @socketio.on('get_compressor_settings', namespace='/sbr')
+    def ws_get_compressor_settings():
+        """
+        Haal alle compressor-instellingen per phase uit de DB.
+        Keys in settings.db: compressor_<phase>_k303_mode, compressor_<phase>_k303_pct, etc.
+        """
+        phases = ['influent','react','effluent','wait','dose_nutrients','wait_after_N']
+        payload = {}
+        for phase in phases:
+            cfg = {}
+            # modes: 'ON' of 'OFF'
+            cfg['k303_on']  = get_setting(f'compressor_{phase}_k303_mode', 'OFF')
+            cfg['k303_pct'] = float(get_setting(f'compressor_{phase}_k303_pct', '0'))
+            cfg['k304_on']  = get_setting(f'compressor_{phase}_k304_mode', 'OFF')
+            cfg['k304_pct'] = float(get_setting(f'compressor_{phase}_k304_pct', '0'))
+            payload[phase] = cfg
+        emit('compressor_settings', payload, namespace='/sbr')
+

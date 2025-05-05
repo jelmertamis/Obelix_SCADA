@@ -23,6 +23,10 @@ const SBR_CONFIG = {
     setPhaseTimes:        'sbr_set_phase_times',
     setCycleTimeMax:      'sbr_set_cycle_time_max',
     setHeatingSetpoints:  'sbr_set_heating_setpoints',
+    getCompressorSettings: 'get_compressor_settings',
+    compressorSettings:    'compressor_settings',
+    setCompressorSettings: 'set_compressor_settings',
+    compressorUpdated:    'compressor_updated'
   },
   /** DOM-element ID's en prefixes/suffixes */
   dom: {
