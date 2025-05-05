@@ -1,44 +1,92 @@
-// sbr.js - Leesbaardere refactor voor SBR Control
+// sbr.js - Centraal configureren van alle magic strings
+
+// Central config voor namespaces, events en DOM-ids
+const SBR_CONFIG = {
+  namespaces: {
+    sbr:    '/sbr',
+    sensor: '/sensors',
+  },
+  events: {
+    getPhaseTimes:         'sbr_get_phase_times',
+    phaseTimes:            'sbr_phase_times',
+    status:                'sbr_status',
+    timer:                 'sbr_timer',
+    sensorUpdate:          'sensor_update',
+    control:               'sbr_control',
+    setThreshold:          'sbr_set_threshold',
+    setEffluentThreshold:  'sbr_set_effluent_threshold',
+    setPhaseTimes:         'sbr_set_phase_times',
+    setCycleTimeMax:       'sbr_set_cycle_time_max',
+    setHeatingSetpoints:   'sbr_set_heating_setpoints',
+  },
+  dom: {
+    timer:         'cycle-timer',
+    toggleBtn:     'btn-toggle',
+    resetBtn:      'btn-reset',
+    maxInput:      'cycle-max-input',
+    maxSetBtn:     'btn-set-cycle-max',
+    maxText:       'cycle-max-text',
+    heatOnInput:   'heat-on-input',
+    heatOffInput:  'heat-off-input',
+    heatSetBtn:    'btn-set-heat',
+    heatOnText:    'heat-on-text',
+    heatOffText:   'heat-off-text',
+    container:     'sbr-config-section',
+    // Prefix/suffix voor fase elementen
+    phaseBoxPrefix:  'phase-',  phaseBoxSuffix: '-box',
+    phaseActualSuffix: '-actual', phaseTargetSuffix: '-target',
+    phaseInputSuffix:  '-input',  phaseBtnPrefix:  'btn-set-'
+  }
+};
 
 // Definieer fases met hun type ('level' of 'time')
 const PHASES = [
-  { key: 'influent',      type: 'level' },
-  { key: 'react',         type: 'time'  },
-  { key: 'effluent',      type: 'level' },
-  { key: 'wait',          type: 'time'  },
-  { key: 'dose_nutrients',type: 'time'  },
-  { key: 'wait_after_N',  type: 'time'  },
+  { key: 'influent',       type: 'level' },
+  { key: 'react',          type: 'time'  },
+  { key: 'effluent',       type: 'level' },
+  { key: 'wait',           type: 'time'  },
+  { key: 'dose_nutrients', type: 'time'  },
+  { key: 'wait_after_N',   type: 'time'  },
 ];
 
 // Socket-verbindingen
-const sbrSocket     = io('/sbr');
-const sensorSocket  = io('/sensors');
+const sbrSocket    = io(SBR_CONFIG.namespaces.sbr);
+const sensorSocket = io(SBR_CONFIG.namespaces.sensor);
 
-// DOM-elementen
+// DOM-elementen ophalen
 const elements = {
-  timer:      document.getElementById('cycle-timer'),
-  toggleBtn:  document.getElementById('btn-toggle'),
-  resetBtn:   document.getElementById('btn-reset'),
-  maxInput:   document.getElementById('cycle-max-input'),
-  maxSetBtn:  document.getElementById('btn-set-cycle-max'),
-  heatOnInput:  document.getElementById('heat-on-input'),
-  heatOffInput: document.getElementById('heat-off-input'),
-  heatSetBtn:   document.getElementById('btn-set-heat'),
-  container: document.getElementById('sbr-config-section'),
+  timer:       document.getElementById(SBR_CONFIG.dom.timer),
+  toggleBtn:   document.getElementById(SBR_CONFIG.dom.toggleBtn),
+  resetBtn:    document.getElementById(SBR_CONFIG.dom.resetBtn),
+  maxInput:    document.getElementById(SBR_CONFIG.dom.maxInput),
+  maxSetBtn:   document.getElementById(SBR_CONFIG.dom.maxSetBtn),
+  maxText:     document.getElementById(SBR_CONFIG.dom.maxText),
+  heatOnInput: document.getElementById(SBR_CONFIG.dom.heatOnInput),
+  heatOffInput:document.getElementById(SBR_CONFIG.dom.heatOffInput),
+  heatSetBtn:  document.getElementById(SBR_CONFIG.dom.heatSetBtn),
+  heatOnText:  document.getElementById(SBR_CONFIG.dom.heatOnText),
+  heatOffText: document.getElementById(SBR_CONFIG.dom.heatOffText),
+  container:   document.getElementById(SBR_CONFIG.dom.container),
   boxes:   {},
   actual:  {},
   target:  {},
   inputs:  {},
-  setBtns: {},
+  setBtns: {}
 };
 
-// Initialiseer elementen per fase
+// Initialiseer fase-elementen dynamisch
 PHASES.forEach(({ key }) => {
-  elements.boxes[key]   = document.getElementById(`phase-${key}-box`);
-  elements.actual[key]  = document.getElementById(`${key}-actual`);
-  elements.target[key]  = document.getElementById(`${key}-target`);
-  elements.inputs[key]  = document.getElementById(`${key}-input`);
-  elements.setBtns[key] = document.getElementById(`btn-set-${key}`);
+  const boxId   = SBR_CONFIG.dom.phaseBoxPrefix + key + SBR_CONFIG.dom.phaseBoxSuffix;
+  const actualId  = key + SBR_CONFIG.dom.phaseActualSuffix;
+  const targetId  = key + SBR_CONFIG.dom.phaseTargetSuffix;
+  const inputId   = key + SBR_CONFIG.dom.phaseInputSuffix;
+  const btnId     = SBR_CONFIG.dom.phaseBtnPrefix + key;
+
+  elements.boxes[key]   = document.getElementById(boxId);
+  elements.actual[key]  = document.getElementById(actualId);
+  elements.target[key]  = document.getElementById(targetId);
+  elements.inputs[key]  = document.getElementById(inputId);
+  elements.setBtns[key] = document.getElementById(btnId);
 });
 
 let lastPhase = PHASES[0].key;
@@ -50,7 +98,7 @@ let isActive  = false;
 
 function updateHighlight(current) {
   PHASES.forEach(({ key }) => {
-    const active = isActive ? key === current : key === lastPhase;
+    const active = isActive ? (key === current) : (key === lastPhase);
     elements.boxes[key].classList.toggle('active', active);
   });
 }
@@ -68,32 +116,29 @@ function validateNonNegative(value, label) {
 // ----------------------------------
 
 function handlePhaseTimes(data) {
-  // Process thresholds en tijden op basis van type
   PHASES.forEach(({ key, type }) => {
     if (type === 'level') {
       const thr = data[`${key}_threshold`];
       elements.target[key].textContent = thr;
       elements.inputs[key].value       = thr;
     } else {
-      const minutes = data[`${key}_minutes`];
-      const seconds = data[`${key}_seconds`];
-      elements.inputs[key].value        = minutes;
-      elements.target[key].textContent = seconds;
+      const mins = data[`${key}_minutes`];
+      const secs = data[`${key}_seconds`];
+      elements.inputs[key].value        = mins;
+      elements.target[key].textContent = secs;
     }
   });
 
-  // Max cycle time
   const maxT = data.cycle_time_max_minutes;
-  elements.maxInput.value = maxT;
-  document.getElementById('cycle-max-text').textContent = maxT;
+  elements.maxInput.value             = maxT;
+  elements.maxText.textContent        = maxT;
 
-  // Heat setpoints
   const onT  = data.heating_on_temp;
   const offT = data.heating_off_temp;
-  elements.heatOnInput.value  = onT;
-  elements.heatOffInput.value = offT;
-  document.getElementById('heat-on-text').textContent  = onT;
-  document.getElementById('heat-off-text').textContent = offT;
+  elements.heatOnInput.value          = onT;
+  elements.heatOffInput.value         = offT;
+  elements.heatOnText.textContent     = onT;
+  elements.heatOffText.textContent    = offT;
 }
 
 function handleStatus(data) {
@@ -104,9 +149,8 @@ function handleStatus(data) {
   lastPhase = data.phase || lastPhase;
   updateHighlight(data.phase);
 
-  // Toon fase-elapsed voor time-fases
   PHASES.filter(p => p.type === 'time').forEach(({ key }) => {
-    elements.actual[key].textContent = key === data.phase ? data.phase_elapsed : '';
+    elements.actual[key].textContent = (key === data.phase ? data.phase_elapsed : '');
   });
 }
 
@@ -118,10 +162,9 @@ function handleTimer(data) {
   lastPhase = data.phase;
   updateHighlight(data.phase);
 
-  // Update actual/target
   PHASES.forEach(({ key, type }) => {
     if (type === 'time') {
-      elements.actual[key].textContent = key === data.phase ? data.phase_elapsed : '';
+      elements.actual[key].textContent = (key === data.phase ? data.phase_elapsed : '');
     }
     if (key === data.phase && data.phase_target !== undefined) {
       elements.target[key].textContent = data.phase_target;
@@ -142,13 +185,12 @@ function handleSensorUpdate(readings) {
 // Event binding
 // ----------------------------------
 
-sbrSocket.on('connect',    () => sbrSocket.emit('sbr_get_phase_times'));
-sbrSocket.on('sbr_phase_times', handlePhaseTimes);
-sbrSocket.on('sbr_status',      handleStatus);
-sbrSocket.on('sbr_timer',       handleTimer);
-sensorSocket.on('sensor_update', handleSensorUpdate);
+sbrSocket.on('connect',           () => sbrSocket.emit(SBR_CONFIG.events.getPhaseTimes));
+sbrSocket.on(SBR_CONFIG.events.phaseTimes,    handlePhaseTimes);
+sbrSocket.on(SBR_CONFIG.events.status,        handleStatus);
+sbrSocket.on(SBR_CONFIG.events.timer,         handleTimer);
+sensorSocket.on(SBR_CONFIG.events.sensorUpdate, handleSensorUpdate);
 
-// Fase-instellingen
 PHASES.forEach(({ key, type }) => {
   const btn   = elements.setBtns[key];
   const input = elements.inputs[key];
@@ -160,11 +202,11 @@ PHASES.forEach(({ key, type }) => {
 
     if (type === 'level') {
       const evt = key === 'influent'
-        ? 'sbr_set_threshold'
-        : 'sbr_set_effluent_threshold';
+        ? SBR_CONFIG.events.setThreshold
+        : SBR_CONFIG.events.setEffluentThreshold;
       sbrSocket.emit(evt, { threshold: val });
     } else {
-      sbrSocket.emit('sbr_set_phase_times', { [key]: val });
+      sbrSocket.emit(SBR_CONFIG.events.setPhaseTimes, { [key]: val });
     }
   });
 
@@ -173,38 +215,37 @@ PHASES.forEach(({ key, type }) => {
   });
 });
 
-// Cycle control
 elements.toggleBtn.addEventListener('click', () =>
-  sbrSocket.emit('sbr_control', { action: 'toggle' })
+  sbrSocket.emit(SBR_CONFIG.events.control, { action: 'toggle' })
 );
-elements.resetBtn.addEventListener('click', () =>
-  sbrSocket.emit('sbr_control', { action: 'reset' })
+elements.resetBtn.addEventListener('click',  () =>
+  sbrSocket.emit(SBR_CONFIG.events.control, { action: 'reset' })
 );
 
-// Max cycle time
 elements.maxSetBtn.addEventListener('click', () => {
   const v = elements.maxInput.valueAsNumber;
   if (!validateNonNegative(v, 'Max Cycle Time')) return;
-  sbrSocket.emit('sbr_set_cycle_time_max', { max_minutes: v });
+  sbrSocket.emit(SBR_CONFIG.events.setCycleTimeMax, { max_minutes: v });
 });
 elements.maxInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') { elements.maxSetBtn.click(); e.preventDefault(); }
 });
 
-// Heating setpoints
-function applyHeatSetpoints() {
+elements.heatSetBtn.addEventListener('click', () => {
   const on  = elements.heatOnInput.valueAsNumber;
   const off = elements.heatOffInput.valueAsNumber;
   if (isNaN(on) || isNaN(off) || off < on) {
     return alert('Voer geldige Heat ON/Off waarden in (OFF ≥ ON)');
   }
-  sbrSocket.emit('sbr_set_heating_setpoints', { on_temp: on, off_temp: off });
-}
+  sbrSocket.emit(SBR_CONFIG.events.setHeatingSetpoints, { on_temp: on, off_temp: off });
+});
 
-elements.heatSetBtn.addEventListener('click', applyHeatSetpoints);
 [elements.heatOnInput, elements.heatOffInput].forEach(input => {
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { applyHeatSetpoints(); e.preventDefault(); }
+    if (e.key === 'Enter') {
+      elements.heatSetBtn.click();
+      e.preventDefault();
+    }
   });
-  input.addEventListener('change', applyHeatSetpoints);
+  input.addEventListener('change', () => elements.heatSetBtn.click());
 });
