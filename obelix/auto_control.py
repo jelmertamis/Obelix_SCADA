@@ -251,7 +251,16 @@ class SBRController:
         """Lees en verwerk temperatuursensor, ongeacht cyclusstatus."""
         try:
             dummy = get_dummy_value(self.level_unit, self.temp_channel)
-            raw = dummy if dummy is not None else self.clients[self.level_unit].read_register(self.temp_channel, functioncode=4)
+            
+            if dummy is not None:
+                raw = dummy
+            else:
+                with modbus_lock:
+                    raw = self.clients[self.level_unit].read_register(
+                        self.temp_channel, functioncode=4
+                    )
+
+
             cal = get_calibration(self.level_unit, self.temp_channel)
             temp = raw * cal['scale'] + cal['offset']
             self._check_heating_valve(temp)
