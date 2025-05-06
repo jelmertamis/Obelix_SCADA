@@ -115,12 +115,17 @@ def init_socketio(socketio):
         log("SocketIO: /aio connected")
         rows = []
         inst = get_clients()[Config.AIO_IDX]
-        for ch in range(4):
+        ctrl = auto_control.sbr_controller  # Haal de SBRController-instantie op
+        current_phase = ctrl.current_phase if ctrl else 'influent'  # Fallback naar influent
+
+        for ch in range(2):  # Alleen kanalen 0 (K303) en 1 (K304)
             try:
                 with modbus_lock:
                     raw_out = inst.read_register(ch, functioncode=3)
                 phys_out = round((raw_out / 4095.0) * 20.0, 2)
-                pct = get_aio_setting(ch)
+                # Haal de actuele percentage-instelling op voor de huidige fase
+                k = 'k303' if ch == 0 else 'k304'
+                pct = float(get_setting(f'compressor_{current_phase}_{k}_pct', '0'))
                 rows.append({
                     'channel': ch,
                     'raw_out': raw_out,
@@ -136,6 +141,7 @@ def init_socketio(socketio):
                     'percent_out': None
                 })
         emit('aio_init', rows, namespace='/aio')
+
 
     @socketio.on('aio_set', namespace='/aio')
     def ws_aio_set(msg):
