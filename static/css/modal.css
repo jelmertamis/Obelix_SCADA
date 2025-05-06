@@ -1,72 +1,113 @@
-/* compressor-modal.css */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0; top: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.5);
-    align-items: center;
-    justify-content: center;
-  }
-  .modal-content {
-    background: #fff;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    width: 90%;
-    max-width: 1000px;
-    font-size: 1.5rem;
-    position: relative;
-  }
-  .modal-close {
-    position: absolute;
-    top: 0.5rem; right: 0.75rem;
-    font-size: 1.5rem;
-    cursor: pointer;
-  }
-  .field {
-    margin-bottom: 1rem;
-  }
-  .field label {
-    display: block;
-    margin-bottom: 0.25rem;
-    font-weight: bold;
-  }
-  .field input,
-  .field select {
-    width: 100%;
-    padding: 0.5rem;
-    border: 1px solid #ccc;
-    border-radius: 0.25rem;
-  }
-  .actions {
-    text-align: right;
-  }
-  .actions .btn {
-    padding: 0.6rem 1.2rem;
-  }
-  .compressor-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 1rem;
-  }
-  .compressor-table th,
-  .compressor-table td {
-    border: 1px solid #ccc;
-    padding: 0.5rem;
-    text-align: center;
-  }
-  .compressor-onoff,
-  .compressor-percent {
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .compressor-onoff,
-  .compressor-percent {
-    width: 100%;         /* vult de volledige celbreedte */
-    max-width: 120px;    /* of een vaste max-breedte */
-    padding: 0.75rem;    /* meer binnenruimte */
-    font-size: 1.5rem;     /* tekst iets groter */
-    box-sizing: border-box;
-  }
+/* static/css/modal.css */
 
+/* Algemene modal styling */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  width: 90%;
+  max-width: 1000px;
+  font-size: 1.5rem;
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+/* Formulier velden */
+.field {
+  margin-bottom: 1rem;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: bold;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.25rem;
+}
+
+/* Actie knoppen */
+.actions {
+  text-align: right;
+}
+
+.actions .btn {
+  padding: 0.6rem 1.2rem;
+}
+
+/* Compressor tabel */
+.compressor-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.compressor-table th,
+.compressor-table td {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.compressor-onoff,
+.compressor-percent {
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 120px;
+  padding: 0.75rem;
+  font-size: 1.5rem;
+}
+
+/* Puls-pauze tabel */
+.pulse-pause-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.pulse-pause-table th,
+.pulse-pause-table td {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  text-align: center;
+  min-width: 60px; /* Voorkomt krappe cellen */
+}
+
+.pulse-pause-input {
+  width: 100%;
+  max-width: 80px;
+  padding: 0.5rem;
+  font-size: 1.5rem; /* Consistent met compressor-modal */
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 0.25rem;
+}
+
+.pulse-pause-input.invalid {
+  border-color: #dc3545; /* Rode rand bij ongeldige invoer */
+}
