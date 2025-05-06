@@ -12,27 +12,22 @@ if (!pulseModal || !pulseBtnOpen || !pulseBtnClose || !pulseForm) {
 
 console.log({ pulseModal, pulseBtnOpen, pulseBtnClose, pulseForm });
 
-// Dummy-gegevens (voor nu)
+// Dummy-gegevens (alleen voor influent)
 const dummySettings = {
-  influent: { pulse: 10.0, pause: 20.0 },
-  react: { pulse: 15.0, pause: 25.0 },
-  effluent: { pulse: 12.0, pause: 22.0 },
-  wait: { pulse: 8.0, pause: 18.0 },
-  dose_nutrients: { pulse: 5.0, pause: 15.0 },
-  wait_after_N: { pulse: 7.0, pause: 17.0 }
+  influent: { pulse: 10.0, pause: 20.0 }
 };
 
 // Open modal en vul met dummy-gegevens
 pulseBtnOpen.addEventListener('click', () => {
   console.log('🛠️ Open pulse-pause-modal');
-  Object.entries(dummySettings).forEach(([phase, cfg]) => {
-    const tr = pulseForm.querySelector(`tr[data-phase="${phase}"]`);
-    if (!tr) return;
-    tr.querySelector(`#${phase}_pulse_current`).textContent = cfg.pulse.toFixed(1);
-    tr.querySelector(`#${phase}_pause_current`).textContent = cfg.pause.toFixed(1);
-    tr.querySelector(`[name="${phase}_pulse"]`).value = cfg.pulse.toFixed(1);
-    tr.querySelector(`[name="${phase}_pause"]`).value = cfg.pause.toFixed(1);
-  });
+  const tr = pulseForm.querySelector(`tr[data-phase="influent"]`);
+  if (tr) {
+    const cfg = dummySettings.influent;
+    tr.querySelector(`#influent_pulse_current`).textContent = cfg.pulse.toFixed(1);
+    tr.querySelector(`#influent_pause_current`).textContent = cfg.pause.toFixed(1);
+    tr.querySelector(`[name="influent_pulse"]`).value = cfg.pulse.toFixed(1);
+    tr.querySelector(`[name="influent_pause"]`).value = cfg.pause.toFixed(1);
+  }
   pulseModal.style.display = 'flex';
 });
 
@@ -46,7 +41,8 @@ window.addEventListener('click', e => {
 pulseForm.addEventListener('submit', e => {
   e.preventDefault();
   const data = {};
-  pulseForm.querySelectorAll('tbody tr[data-phase]').forEach(tr => {
+  const tr = pulseForm.querySelector(`tr[data-phase="influent"]`);
+  if (tr) {
     const phase = tr.dataset.phase;
     const pulseInput = tr.querySelector(`[name="${phase}_pulse"]`);
     const pauseInput = tr.querySelector(`[name="${phase}_pause"]`);
@@ -67,7 +63,7 @@ pulseForm.addEventListener('submit', e => {
     // Update ingestelde waarden
     tr.querySelector(`#${phase}_pulse_current`).textContent = pulse.toFixed(1);
     tr.querySelector(`#${phase}_pause_current`).textContent = pause.toFixed(1);
-  });
+  }
   if (Object.keys(data).length > 0) {
     console.log('🔄 Puls-pauze instellingen opgeslagen:', data);
     // Toekomstig: sbrSocket.emit('set_pulse_pause_settings', data);

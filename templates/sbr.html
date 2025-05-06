@@ -132,58 +132,33 @@
   </div>
 </section>
 
-<!-- Compressor Modal (in sbr.html) -->
-<div id="compressor-modal" class="modal">
+<div id="pulse-pause-modal" class="modal">
   <div class="modal-content">
-    <span id="compressor-close" class="modal-close">&times;</span>
-    <h2>Compressor Instellingen</h2>
-
-    <form id="compressor-form">
-      <table class="compressor-table">
+    <span id="pulse-pause-close" class="modal-close">×</span>
+    <h2>Puls-Pauze Instellingen (Influent)</h2>
+    <form id="pulse-pause-form">
+      <table class="pulse-pause-table">
         <thead>
           <tr>
             <th>Fase</th>
-            <th>K303 ON/OFF</th><th>Huidig</th><th>K303 %</th><th>Huidig</th>
-            <th>K304 ON/OFF</th><th>Huidig</th><th>K304 %</th><th>Huidig</th>
+            <th>Puls (s)</th><th>Ingesteld</th>
+            <th>Pauze (s)</th><th>Ingesteld</th>
           </tr>
         </thead>
         <tbody>
-          {% for phase in ['influent','react','effluent','wait','dose_nutrients','wait_after_N'] %}
-          <tr data-phase="{{ phase }}">
-            <td>{{ phase.replace('_',' ')|upper }}</td>
-            <td>
-              <select name="{{ phase }}_k303_on" class="compressor-onoff">
-                <option>ON</option><option>OFF</option>
-              </select>
-            </td>
-            <td><span id="{{phase}}_k303_on_current">–</span></td>
-
-            <td>
-              <input type="number" name="{{ phase }}_k303_pct" class="compressor-percent">
-            </td>
-            <td><span id="{{phase}}_k303_pct_current">–</span></td>
-
-            <td>
-              <select name="{{ phase }}_k304_on" class="compressor-onoff">
-                <option>ON</option><option>OFF</option>
-              </select>
-            </td>
-            <td><span id="{{phase}}_k304_on_current">–</span></td>
-
-            <td>
-              <input type="number" name="{{ phase }}_k304_pct" class="compressor-percent">
-            </td>
-            <td><span id="{{phase}}_k304_pct_current">–</span></td>
+          <tr data-phase="influent">
+            <td>INFLUENT</td>
+            <td><input type="number" step="0.1" min="0" name="influent_pulse" class="pulse-pause-input"></td>
+            <td><span id="influent_pulse_current">–</span></td>
+            <td><input type="number" step="0.1" min="0" name="influent_pause" class="pulse-pause-input"></td>
+            <td><span id="influent_pause_current">–</span></td>
           </tr>
-          {% endfor %}
         </tbody>
       </table>
-
-      <div class="actions" style="text-align:right; margin-top:1rem;">
-        <button type="submit" id="compressor-save" class="btn">Opslaan</button>
+      <div class="actions">
+        <button type="submit" id="pulse-pause-save" class="btn">Opslaan</button>
       </div>
     </form>
-
   </div>
 </div>
 
