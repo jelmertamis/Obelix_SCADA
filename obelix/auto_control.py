@@ -204,10 +204,56 @@ class SBRController:
                 'coil_idx': coil,
                 'state':    'ON' if want else 'OFF'
             }, namespace='/relays')
+        self._apply_compressor_settings(phase) #!
         from obelix.r302_manager import R302Controller
         self.socketio.emit('r302_update',
                            R302Controller(self.r302_unit).get_status(),
                            namespace='/r302')
+        
+    def _apply_compressor_settings(self, phase: str):
+        """
+        Lees compressor instellingen uit DB en pas toe:
+        - Digitale coils 3 (K303) en 4 (K304) ON/OFF
+        - Analoge output channels 0 en 1 voor snelheidspercentage
+        Schrijf alleen als de gewenste state/waarde verschilt van huidige.
+        """
+        inst_relay = self.clients[self.r302_unit]
+        inst_aio   = self.clients[Config.AIO_IDX]
+        for coil, ch in ((3, 0), (4, 1)):
+            # lees instellingen
+            mode_key = f'compressor_{phase}_k{303 if coil==3 else 304}_mode'
+            pct_key  = f'compressor_{phase}_k{303 if coil==3 else 304}_pct'
+            mode = get_setting(mode_key, 'OFF')
+            pct  = float(get_setting(pct_key, '0'))
+            # digitale relais: lees huidig
+            current = (get_relay_state(self.r302_unit, coil) == 'ON')
+            want = (mode == 'ON')
+            log(f"Coil {coil}: current={current}, want={want}")
+            if want != current:
+                with modbus_lock:
+                    inst_relay.write_bit(coil, want, functioncode=5)
+                save_relay_state(self.r302_unit, coil, 'ON' if want else 'OFF')
+                self.socketio.emit('relay_toggled', {
+                    'unit_idx': self.r302_unit,
+                    'coil_idx': coil,
+                    'state':    'ON' if want else 'OFF'
+                }, namespace='/relays')
+            # analoge uitgang: vergelijk met DB
+            prev_pct = get_setting(f'aio_setting_{ch}')
+            log(f"AIO ch{ch}: prev_pct={prev_pct}, new_pct={pct}")
+            if prev_pct is None or float(prev_pct) != pct:
+                mA = 4.0 + (pct / 100.0) * 16.0
+                raw = int((mA / 20.0) * 4095)
+                with modbus_lock:
+                    inst_aio.write_register(ch, raw, functioncode=6)
+                set_setting(f'aio_setting_{ch}', pct)
+                self.socketio.emit('aio_updated', {
+                    'channel':     ch,
+                    'raw_out':     raw,
+                    'phys_out':    round(mA, 2),
+                    'percent_out': pct
+                }, namespace='/aio')
+        log(f"Compressor settings applied for phase '{phase}'")
     
     def _check_heating_valve(self, temp_value):
         """Open/sluit coil 5 (heating valve) op basis van setpoints, alleen in AUTO."""
