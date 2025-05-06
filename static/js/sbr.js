@@ -10,7 +10,6 @@ const SBR_CONFIG = {
     sbr:    '/sbr',
     sensor: '/sensors',
   },
-  /** Event-namen voor communicatie met de server */
   events: {
     getPhaseTimes:        'sbr_get_phase_times',
     phaseTimes:           'sbr_phase_times',
@@ -26,7 +25,11 @@ const SBR_CONFIG = {
     getCompressorSettings: 'get_compressor_settings',
     compressorSettings:    'compressor_settings',
     setCompressorSettings: 'set_compressor_settings',
-    compressorUpdated:    'compressor_updated'
+    compressorUpdated:     'compressor_updated',
+    getPulsePauseSettings: 'get_pulse_pause_settings',
+    setPulsePauseSettings: 'set_pulse_pause_settings',
+    pulsePauseSettings:    'pulse_pause_settings',
+    pulsePauseUpdated:     'pulse_pause_updated'
   },
   /** DOM-element ID's en prefixes/suffixes */
   dom: {

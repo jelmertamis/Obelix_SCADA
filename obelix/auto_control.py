@@ -181,34 +181,94 @@ class SBRController:
                            R302Controller(self.r302_unit).get_status(),
                            namespace='/r302')
 
-    def _apply_phase_logic_pumps(self, phase):
-        if phase == 'wait':
-            return self._auto_off_all()
-        inst = self.clients[self.r302_unit]
-        coil_map = {
-            'influent': 0,
-            'effluent': 1,
-            'dose_nutrients': 2
-            }
-        target   = coil_map.get(phase)
-        for coil in coil_map.values(): # Config.R302_RELAY_MAPPING:
-            mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
-            if mode != 'AUTO':
-                continue
-            want = (coil == target)
-            with modbus_lock:
-                inst.write_bit(coil, want, functioncode=5)
-                save_relay_state(self.r302_unit, coil, 'ON' if want else 'OFF')
-            self.socketio.emit('relay_toggled', {
-                'unit_idx': self.r302_unit,
-                'coil_idx': coil,
-                'state':    'ON' if want else 'OFF'
-            }, namespace='/relays')
-        self._apply_compressor_settings(phase) #!
-        from obelix.r302_manager import R302Controller
-        self.socketio.emit('r302_update',
-                           R302Controller(self.r302_unit).get_status(),
-                           namespace='/r302')
+    # # def _apply_phase_logic_pumps(self, phase):
+    #     """
+    #     Bepaalt welke hoofdpompen (coils 0,1,2) in AUTO-mode actief moeten zijn
+    #     voor de gegeven SBR-fase. Handmatige instellingen blijven onaangeroerd.
+
+    #     Fases:
+    #       - 'influent':       alleen influent-pomp (coil 0)
+    #       - 'effluent':       alleen effluent-pomp (coil 1)
+    #       - 'dose_nutrients': alleen voedingspomp (coil 2)
+    #       - 'wait':           alle pompen uit (pauze)
+    #     """
+    #     # ----- 1) Pauze-fase: alle pompen uit en direct stoppen
+    #     if phase == 'wait':
+    #         # Zorg dat in pauze alle relais uitstaan
+    #         return self._auto_off_all()
+
+    #     # Haal de Modbus-client voor de R302-unit (meestal index 0)
+    #     inst = self.clients[self.r302_unit]
+
+    #     # Mapping van fase naar list van coils (later bijv. uitbreiden met meerdere tegelijk)
+    #     phase_to_coils = {
+    #         'influent':       [0],  # influent-pomp
+    #         'effluent':       [1],  # effluent-pomp
+    #         'dose_nutrients': [2],  # voedingspomp
+    #     }
+    #     # Welke coils horen in deze fase aangezet te worden?
+    #     target_coils = phase_to_coils.get(phase, [])
+
+    #     # ----- 2) Loop over de drie primaire pompen (coils 0,1,2)
+    #     for coil in (0, 1, 2):
+    #         # Lees de mode-instelling (AUTO, MANUAL_ON, MANUAL_OFF)
+    #         mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
+
+    #         # In MANUAL_ON/MANUAL_OFF overslaan we deze coil:
+    #         # zo respecteren we gebruiker-instructies en overrulen we niet.
+    #         if mode != 'AUTO':
+    #             # Volgende coil
+    #             continue
+            
+    #         # Bepaal of deze coil aan moet staan: zit hij in target_coils?
+    #         should_be_on = (coil in target_coils)
+            
+    #         if phase == 'influent' and coil == 0:
+    #             pulse_time = float(get_setting('pulse_influent_seconds', '10.0'))
+    #             pause_time = float(get_setting('pause_influent_seconds', '20.0'))
+    #             cycle_time = pulse_time + pause_time
+    #             if cycle_time > 0:
+    #                 cycle_position = self.phase_elapsed % cycle_time
+    #                 should_be_on = (cycle_position < pulse_time)
+    #                 log(f"🚰 Influent pomp: {'AUTO_ON' if should_be_on else 'AUTO_OFF'} "
+    #                     f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
+    #             else:
+    #                 should_be_on = False
+    #                 log(f"🚰 Influent pomp: AUTO_OFF (ongeldige cyclus, pulse={pulse_time}, pause={pause_time})")
+
+
+    #         # ----- 3) Schakel fysieke coil via Modbus
+    #         with modbus_lock:
+    #             # fysiek bit schrijven (functioncode 5 = force single coil)
+    #             inst.write_bit(coil, should_be_on, functioncode=5)
+    #             # Status in database bijwerken voor consistentie
+    #             save_relay_state(
+    #                 self.r302_unit,
+    #                 coil,
+    #                 'ON' if should_be_on else 'OFF'
+    #             )
+
+    #         # ----- 4) UI bijwerken via Socket.IO-event
+    #         # stuurt unit idx, coil idx en nieuwe staat
+    #         self.socketio.emit(
+    #             'relay_toggled',
+    #             {
+    #                 'unit_idx': self.r302_unit,
+    #                 'coil_idx': coil,
+    #                 'state':    'ON' if should_be_on else 'OFF'
+    #             },
+    #             namespace='/relays'
+    #         )
+
+    #     # ----- 5) Compressors instellen (coils 3,4 + analoge outputs)
+    #     # losstaand van de drie hoofdpompen.
+    #     self._apply_compressor_settings(phase)
+
+    #     # ----- 6) Tot slot: volledige reactorstatus (mode + fysiek) pushen
+    #     from obelix.r302_manager import R302Controller
+    #     status = R302Controller(self.r302_unit).get_status()
+    #     self.socketio.emit('r302_update', status, namespace='/r302')
+
         
     def _apply_compressor_settings(self, phase: str):
         """
@@ -312,34 +372,119 @@ class SBRController:
             self._check_heating_valve(temp)
         except Exception as e:
             log(f"Error monitoring temperature: {e}")  
-    
-    
+        
+    def _apply_phase_logic_pumps(self, phase, influent_should_be_on=True):
+        """
+        Past pompstatus toe voor de gegeven fase. Voor influent fase wordt
+        influent_should_be_on gebruikt om de pompstatus (ON/OFF) te bepalen.
+        """
+        log(f"🔍 Start _apply_phase_logic_pumps voor fase: {phase}, influent_should_be_on: {influent_should_be_on}")
+        if phase == 'wait':
+            log("🔍 Pauze-fase: alle pompen uit")
+            return self._auto_off_all()
+
+        try:
+            inst = self.clients[self.r302_unit]
+            log(f"🔍 Modbus-client verkregen voor unit {self.r302_unit}")
+
+            phase_to_coils = {
+                'influent': [0],
+                'effluent': [1],
+                'dose_nutrients': [2]
+            }
+            target_coils = phase_to_coils.get(phase, [])
+            log(f"🔍 Target coils voor fase {phase}: {target_coils}")
+
+            for coil in (0, 1, 2):
+                mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
+                log(f"🔍 Coil {coil} modus: {mode}")
+                if mode != 'AUTO':
+                    log(f"🚰 Relais {coil} in {mode} modus, overslaan AUTO logica")
+                    continue
+
+                should_be_on = (coil in target_coils)
+                # Pas should_be_on aan voor influent pomp
+                if phase == 'influent' and coil == 0:
+                    should_be_on = influent_should_be_on
+                log(f"🔍 Coil {coil} should_be_on: {should_be_on}")
+
+                try:
+                    with modbus_lock:
+                        log(f"🔍 Schrijven naar coil {coil}: {'ON' if should_be_on else 'OFF'}")
+                        inst.write_bit(coil, should_be_on, functioncode=5)
+                        save_relay_state(self.r302_unit, coil, 'ON' if should_be_on else 'OFF')
+                    self.socketio.emit('relay_toggled', {
+                        'unit_idx': self.r302_unit,
+                        'coil_idx': coil,
+                        'state': 'ON' if should_be_on else 'OFF'
+                    }, namespace='/relays')
+                except Exception as e:
+                    log(f"❌ Fout bij schrijven naar coil {coil}: {e}")
+
+            self._apply_compressor_settings(phase)
+            from obelix.r302_manager import R302Controller
+            self.socketio.emit('r302_update',
+                               R302Controller(self.r302_unit).get_status(),
+                               namespace='/r302')
+        except Exception as e:
+            log(f"❌ Fout in _apply_phase_logic_pumps: {e}")
+
     def run(self):
         global sbr_controller
         sbr_controller = self
         log("🔄 SBR thread started")
         phases = self.phases
+        last_pulse_state = None
 
         while True:
-            # 1) Altijd temperatuur monitoren
+            log(f"🔍 Run loop tick - start_event: {self.start_event.is_set()}, fase: {self.current_phase}, "
+                f"phase_elapsed: {self.phase_elapsed}, timer: {self.timer}")
             self._monitor_temperature()
-            
+
             if not self.start_event.is_set():
+                log("🔍 Cyclus niet gestart, overslaan fase-logica")
                 self.socketio.sleep(1)
                 continue
-            
-            # Controleer op maximale cyclus duur
+
             if self.timer >= self.cycle_time_max * 60:
-                log("Cycle time exceeded max, restarting cycle at influent")
+                log("🔍 Cycle time exceeded max, restarting cycle at influent")
                 self.reset()
                 continue
 
             phase = self.current_phase or 'influent'
+            log(f"🔍 Verwerken fase: {phase}")
 
-            # Lees dummy override of echt register
+            # Puls-pauze logica voor influent fase
+            influent_should_be_on = True  # Standaard AAN voor niet-influent fases
+            if phase == 'influent':
+                pulse_time = float(get_setting('pulse_influent_seconds', '10.0'))
+                pause_time = float(get_setting('pause_influent_seconds', '20.0'))
+                cycle_time = pulse_time + pause_time
+                log(f"🔍 Influent puls-pauze - Puls: {pulse_time}s, Pauze: {pause_time}s, Cycle: {cycle_time}s")
+
+                if cycle_time > 0:
+                    cycle_position = self.phase_elapsed % cycle_time
+                    influent_should_be_on = (cycle_position < pulse_time)
+                    current_state = 'ON' if influent_should_be_on else 'OFF'
+                    log(f"🚰 Influent pomp: AUTO_{current_state} "
+                        f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
+
+                    # Roep _apply_phase_logic_pumps aan bij staatverandering
+                    if last_pulse_state != current_state:
+                        log(f"🔍 Puls-pauze staat veranderd naar {current_state}, roep _apply_phase_logic_pumps aan")
+                        self._apply_phase_logic_pumps('influent', influent_should_be_on=influent_should_be_on)
+                        last_pulse_state = current_state
+                else:
+                    log("🔍 Ongeldige puls-pauze cyclus, pomp uit")
+                    influent_should_be_on = False
+                    if last_pulse_state != 'OFF':
+                        self._apply_phase_logic_pumps('influent', influent_should_be_on=False)
+                        last_pulse_state = 'OFF'
+
             raw = None
             dummy = get_dummy_value(self.level_unit, self.level_channel)
             if dummy is not None:
+                log(f"🔍 Dummy niveau waarde: {dummy}")
                 raw = dummy
             else:
                 try:
@@ -347,88 +492,92 @@ class SBRController:
                         raw = self.clients[self.level_unit].read_register(
                             self.level_channel, functioncode=4
                         )
-                except:
+                        log(f"🔍 Modbus niveau waarde: {raw}")
+                except Exception as e:
+                    log(f"❌ Fout bij lezen niveau register: {e}")
                     raw = None
 
-            # Bereken calibrated actual
             actual = None
             if raw is not None:
                 cal = get_calibration(self.level_unit, self.level_channel)
                 actual = raw * cal['scale'] + cal['offset']
+                log(f"🔍 Gekalibreerd niveau: {actual}")
 
-            # Overgang voor influent op basis level
             if phase == 'influent' and self.influent_threshold >= 0 and actual is not None:
+                log(f"🔍 Influent fase - actual: {actual}, threshold: {self.influent_threshold}")
                 if actual >= self.influent_threshold:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0
                     log(f"🔄 Overgang naar volgende fase: {next_p}")
-                    log((idx + 1) % len(phases))
                     if (idx + 1) % len(phases) == 0:
-                        log("setting self.timer = 0")
+                        log("🔍 Cyclus voltooid, timer reset")
                         self.timer = 0
                     self.current_phase = next_p
                     self._apply_phase_logic_pumps(next_p)
                     self.socketio.emit('sbr_timer', {
-                        'timer':         self.timer,
-                        'phase':         next_p,
+                        'timer': self.timer,
+                        'phase': next_p,
                         'phase_elapsed': 0,
-                        'phase_target':  self._get_phase_target(next_p),
-                        'actual_level':  None
+                        'phase_target': self._get_phase_target(next_p),
+                        'actual_level': None
                     }, namespace='/sbr')
+                    last_pulse_state = None
                     continue
             elif phase == 'effluent' and self.effluent_threshold >= 0 and actual is not None:
+                log(f"🔍 Effluent fase - actual: {actual}, threshold: {self.effluent_threshold}")
                 if actual <= self.effluent_threshold:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0
                     log(f"🔄 Overgang naar volgende fase: {next_p}")
-                    log((idx + 1) % len(phases))
                     if (idx + 1) % len(phases) == 0:
-                        log("setting self.timer = 0")
+                        log("🔍 Cyclus voltooid, timer reset")
                         self.timer = 0
                     self.current_phase = next_p
                     self._apply_phase_logic_pumps(next_p)
                     self.socketio.emit('sbr_timer', {
-                        'timer':         self.timer,
-                        'phase':         next_p,
+                        'timer': self.timer,
+                        'phase': next_p,
                         'phase_elapsed': 0,
-                        'phase_target':  self._get_phase_target(next_p),
-                        'actual_level':  None
+                        'phase_target': self._get_phase_target(next_p),
+                        'actual_level': None
                     }, namespace='/sbr')
                     continue
             else:
-                if self.phase_elapsed >= self.phase_end.get(phase, 0):
-                    
+                phase_end = self.phase_end.get(phase, 0)
+                log(f"🔍 Tijdgebaseerde fase - phase_elapsed: {self.phase_elapsed}, phase_end: {phase_end}")
+                if self.phase_elapsed >= phase_end:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
                     self.phase_elapsed = 0
                     log(f"🔄 Overgang naar volgende fase: {next_p}")
-                    log((idx + 1) % len(phases))
                     if (idx + 1) % len(phases) == 0:
-                        log("setting self.timer = 0")
+                        log("🔍 Cyclus voltooid, timer reset")
                         self.timer = 0
                     self.current_phase = next_p
                     self._apply_phase_logic_pumps(next_p)
                     self.socketio.emit('sbr_timer', {
-                        'timer':         self.timer,
-                        'phase':         next_p,
+                        'timer': self.timer,
+                        'phase': next_p,
                         'phase_elapsed': 0,
-                        'phase_target':  self._get_phase_target(next_p),
-                        'actual_level':  None
+                        'phase_target': self._get_phase_target(next_p),
+                        'actual_level': None
                     }, namespace='/sbr')
+                    last_pulse_state = None
                     continue
 
-            if self.phase_elapsed == 0:
+            if self.phase_elapsed == 0 and phase != 'influent':
+                log(f"🔍 Eerste tick van fase {phase}, roep _apply_phase_logic_pumps aan")
                 self._apply_phase_logic_pumps(phase)
 
-            # Emit status met actual_level
+            log(f"🔍 Emit sbr_timer voor fase {phase}")
             self.socketio.emit('sbr_timer', {
-                'timer':          self.timer,
-                'phase':          phase,
-                'phase_elapsed':  self.phase_elapsed,
-                'phase_target':   self._get_phase_target(phase),
-                'actual_level':   actual
+                'timer': self.timer,
+                'phase': phase,
+                'phase_elapsed': self.phase_elapsed,
+                'phase_target': self._get_phase_target(phase),
+                'actual_level': actual
             }, namespace='/sbr')
 
             self.socketio.sleep(1)

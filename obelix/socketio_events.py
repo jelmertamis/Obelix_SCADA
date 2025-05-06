@@ -1,5 +1,4 @@
-# obelix/socketio_events.py
-
+# socketio_events.py
 from flask_socketio import emit
 from obelix.config import Config
 from obelix.database import (
@@ -61,7 +60,6 @@ def init_socketio(socketio):
             'heating_off_temp':  ctrl.heat_off_temp,
         }, namespace='/sbr')
 
-
     @socketio.on('toggle_relay', namespace='/relays')
     def ws_toggle_relay(msg):
         idx, coil, want = msg['unit_idx'], msg['coil_idx'], msg['state']
@@ -115,15 +113,14 @@ def init_socketio(socketio):
         log("SocketIO: /aio connected")
         rows = []
         inst = get_clients()[Config.AIO_IDX]
-        ctrl = auto_control.sbr_controller  # Haal de SBRController-instantie op
-        current_phase = ctrl.current_phase if ctrl else 'influent'  # Fallback naar influent
+        ctrl = auto_control.sbr_controller
+        current_phase = ctrl.current_phase if ctrl else 'influent'
 
-        for ch in range(2):  # Alleen kanalen 0 (K303) en 1 (K304)
+        for ch in range(2):
             try:
                 with modbus_lock:
                     raw_out = inst.read_register(ch, functioncode=3)
                 phys_out = round((raw_out / 4095.0) * 20.0, 2)
-                # Haal de actuele percentage-instelling op voor de huidige fase
                 k = 'k303' if ch == 0 else 'k304'
                 pct = float(get_setting(f'compressor_{current_phase}_{k}_pct', '0'))
                 rows.append({
@@ -141,7 +138,6 @@ def init_socketio(socketio):
                     'percent_out': None
                 })
         emit('aio_init', rows, namespace='/aio')
-
 
     @socketio.on('aio_set', namespace='/aio')
     def ws_aio_set(msg):
@@ -168,28 +164,28 @@ def init_socketio(socketio):
         log("SocketIO: /r302 connected")
         emit('r302_init', r302_ctrl.get_status(), namespace='/r302')
 
-        @socketio.on('set_mode', namespace='/r302')
-        def ws_set_mode(msg):
-            coil, mode = msg['coil'], msg['mode']
-            r302_ctrl.set_mode(coil, mode)
-            inst = get_clients()[r302_ctrl.unit]
-            if mode in ('MANUAL_ON', 'MANUAL_OFF'):
-                want = (mode == 'MANUAL_ON')
-                with modbus_lock:
-                    inst.write_bit(coil, want, functioncode=5)
-                    save_relay_state(r302_ctrl.unit, coil, 'ON' if want else 'OFF')
-                emit('relay_toggled',
-                     {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want else 'OFF'},
-                     namespace='/relays', broadcast=True)
-                emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
-                return
+    @socketio.on('set_mode', namespace='/r302')
+    def ws_set_mode(msg):
+        coil, mode = msg['coil'], msg['mode']
+        r302_ctrl.set_mode(coil, mode)
+        inst = get_clients()[r302_ctrl.unit]
+        if mode in ('MANUAL_ON', 'MANUAL_OFF'):
+            want = (mode == 'MANUAL_ON')
+            with modbus_lock:
+                inst.write_bit(coil, want, functioncode=5)
+                save_relay_state(r302_ctrl.unit, coil, 'ON' if want else 'OFF')
+            emit('relay_toggled',
+                 {'unit_idx': r302_ctrl.unit, 'coil_idx': coil, 'state': 'ON' if want else 'OFF'},
+                 namespace='/relays', broadcast=True)
             emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
-            ctrl = auto_control.sbr_controller
-            if ctrl and ctrl.start_event.is_set():
-                if ctrl.current_phase in ('react', 'wait'):
-                    ctrl._auto_off_all()
-                else:
-                    ctrl._apply_phase_logic_pumps(ctrl.current_phase)
+            return
+        emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
+        ctrl = auto_control.sbr_controller
+        if ctrl and ctrl.start_event.is_set():
+            if ctrl.current_phase in ('react', 'wait'):
+                ctrl._auto_off_all()
+            else:
+                ctrl._apply_phase_logic_pumps(ctrl.current_phase)
 
     # ----- SBR CYCLE -----
     @socketio.on('connect', namespace='/sbr')
@@ -234,20 +230,16 @@ def init_socketio(socketio):
         action = msg.get('action')
         if action == 'toggle':
             if ctrl.start_event.is_set():
-                # Stoppen
                 ctrl.stop()
             else:
-                # Starten
                 ctrl.start()
 
-            # Éénmalig status + fase sturen
             emit('sbr_status', {
                 'active': ctrl.start_event.is_set(),
                 'phase':  ctrl.current_phase,
                 'phase_elapsed': ctrl.phase_elapsed
             }, namespace='/sbr')
 
-            # En direct de thresholds/tijden meezenden
             broadcast_phase_settings(ctrl)
             
         elif action == 'reset':
@@ -260,7 +252,6 @@ def init_socketio(socketio):
             broadcast_phase_settings(ctrl)
         else:
             emit('sbr_error', {'error': f'Unknown action: {action}'}, namespace='/sbr')
-
 
     @socketio.on('sbr_set_phase_times', namespace='/sbr')
     def ws_sbr_set_phase_times(msg):
@@ -281,7 +272,6 @@ def init_socketio(socketio):
                 updates.get('wait',     ctrl.wait_time),
                 updates.get('dose_nutrients', ctrl.dose_time),
                 updates.get('wait_after_N', ctrl.wait_after_N_time)
-
             )
             broadcast_phase_settings(ctrl)
         except Exception as e:
@@ -314,7 +304,6 @@ def init_socketio(socketio):
                 raise ValueError("Threshold moet ≥ 0 zijn")
             set_setting('sbr_effluent_level_threshold', str(val))
             ctrl.effluent_threshold = val
-            # Gebruik hier dezelfde helper als voor influent!
             broadcast_phase_settings(ctrl)
         except Exception as e:
             emit('sbr_error', {'error': str(e)}, namespace='/sbr')
@@ -345,12 +334,6 @@ def init_socketio(socketio):
 
     @socketio.on('set_compressor_settings', namespace='/sbr')
     def ws_set_compressor_setting(msg):
-        """
-        Verwacht msg = {
-        phase: { k303_on, k303_pct, k304_on, k304_pct },
-        …
-        }
-        """
         log(f"📥 Ontvangen set_compressor_settings: {msg}")
         try:
             for phase, cfg in msg.items():
@@ -364,18 +347,12 @@ def init_socketio(socketio):
                 {'error': f"Compressorsetting mislukt: {e}"},
                 namespace='/sbr')
 
-
     @socketio.on('get_compressor_settings', namespace='/sbr')
     def ws_get_compressor_settings():
-        """
-        Haal alle compressor-instellingen per phase uit de DB.
-        Keys in settings.db: compressor_<phase>_k303_mode, compressor_<phase>_k303_pct, etc.
-        """
         phases = ['influent','react','effluent','wait','dose_nutrients','wait_after_N']
         payload = {}
         for phase in phases:
             cfg = {}
-            # modes: 'ON' of 'OFF'
             cfg['k303_on']  = get_setting(f'compressor_{phase}_k303_mode', 'OFF')
             cfg['k303_pct'] = float(get_setting(f'compressor_{phase}_k303_pct', '0'))
             cfg['k304_on']  = get_setting(f'compressor_{phase}_k304_mode', 'OFF')
@@ -383,3 +360,38 @@ def init_socketio(socketio):
             payload[phase] = cfg
         emit('compressor_settings', payload, namespace='/sbr')
 
+    # ----- PULSE-PAUSE SETTINGS -----
+    @socketio.on('get_pulse_pause_settings', namespace='/sbr')
+    def ws_get_pulse_pause_settings():
+        try:
+            payload = {
+                'influent': {
+                    'pulse': float(get_setting('pulse_influent_seconds', '10.0')),
+                    'pause': float(get_setting('pause_influent_seconds', '20.0'))
+                }
+            }
+            emit('pulse_pause_settings', payload, namespace='/sbr')
+            log(f"📤 Verstuur puls-pauze instellingen: {payload}")
+        except Exception as e:
+            log(f"❌ Fout bij ophalen puls-pauze instellingen: {e}")
+            emit('sbr_error', {'error': f"Pulse-pause settings mislukt: {e}"}, namespace='/sbr')
+
+    @socketio.on('set_pulse_pause_settings', namespace='/sbr')
+    def ws_set_pulse_pause_settings(msg):
+        log(f"📥 Ontvangen set_pulse_pause_settings: {msg}")
+        try:
+            influent = msg.get('influent', {})
+            pulse = float(influent.get('pulse', 10.0))
+            pause = float(influent.get('pause', 20.0))
+            if pulse < 0 or pause < 0:
+                raise ValueError("Puls en pauze moeten ≥ 0 zijn")
+            set_setting('pulse_influent_seconds', str(pulse))
+            set_setting('pause_influent_seconds', str(pause))
+            payload = {
+                'influent': {'pulse': pulse, 'pause': pause}
+            }
+            emit('pulse_pause_updated', payload, namespace='/sbr', broadcast=True)
+            log(f"✅ Puls-pauze instellingen opgeslagen: {payload}")
+        except Exception as e:
+            log(f"❌ Fout bij opslaan puls-pauze instellingen: {e}")
+            emit('sbr_error', {'error': f"Pulse-pause settings mislukt: {e}"}, namespace='/sbr')

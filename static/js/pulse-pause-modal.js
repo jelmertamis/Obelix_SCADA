@@ -12,22 +12,10 @@ if (!pulseModal || !pulseBtnOpen || !pulseBtnClose || !pulseForm) {
 
 console.log({ pulseModal, pulseBtnOpen, pulseBtnClose, pulseForm });
 
-// Dummy-gegevens (alleen voor influent)
-const dummySettings = {
-  influent: { pulse: 10.0, pause: 20.0 }
-};
-
-// Open modal en vul met dummy-gegevens
+// Open modal en vraag huidige instellingen
 pulseBtnOpen.addEventListener('click', () => {
-  console.log('🛠️ Open pulse-pause-modal');
-  const tr = pulseForm.querySelector(`tr[data-phase="influent"]`);
-  if (tr) {
-    const cfg = dummySettings.influent;
-    tr.querySelector(`#influent_pulse_current`).textContent = cfg.pulse.toFixed(1);
-    tr.querySelector(`#influent_pause_current`).textContent = cfg.pause.toFixed(1);
-    tr.querySelector(`[name="influent_pulse"]`).value = cfg.pulse.toFixed(1);
-    tr.querySelector(`[name="influent_pause"]`).value = cfg.pause.toFixed(1);
-  }
+  console.log('🛠️ Open pulse-pause-modal, vraag settings op');
+  sbrSocket.emit(SBR_CONFIG.events.getPulsePauseSettings);
   pulseModal.style.display = 'flex';
 });
 
@@ -37,10 +25,22 @@ window.addEventListener('click', e => {
   if (e.target === pulseModal) pulseModal.style.display = 'none';
 });
 
-// Submit-handler: log gegevens, modal blijft open
+// Vul inputs en "huidig" spans bij binnenkomst van settings
+sbrSocket.on(SBR_CONFIG.events.pulsePauseSettings, settings => {
+  console.log('🛠️ Ingeladen puls-pauze instellingen:', settings);
+  const tr = pulseForm.querySelector(`tr[data-phase="influent"]`);
+  if (tr) {
+    const cfg = settings.influent;
+    tr.querySelector(`#influent_pulse_current`).textContent = cfg.pulse.toFixed(1);
+    tr.querySelector(`#influent_pause_current`).textContent = cfg.pause.toFixed(1);
+    tr.querySelector(`[name="influent_pulse"]`).value = cfg.pulse.toFixed(1);
+    tr.querySelector(`[name="influent_pause"]`).value = cfg.pause.toFixed(1);
+  }
+});
+
+// Submit-handler: verzamel en emit zonder modal te sluiten
 pulseForm.addEventListener('submit', e => {
   e.preventDefault();
-  const data = {};
   const tr = pulseForm.querySelector(`tr[data-phase="influent"]`);
   if (tr) {
     const phase = tr.dataset.phase;
@@ -57,15 +57,30 @@ pulseForm.addEventListener('submit', e => {
       console.warn(`Ongeldige invoer voor ${phase}`);
       if (isNaN(pulse) || pulse < 0) pulseInput.classList.add('invalid');
       if (isNaN(pause) || pause < 0) pauseInput.classList.add('invalid');
+      alert('Puls en pauze moeten ≥ 0 zijn');
       return;
     }
-    data[phase] = { pulse, pause };
-    // Update ingestelde waarden
-    tr.querySelector(`#${phase}_pulse_current`).textContent = pulse.toFixed(1);
-    tr.querySelector(`#${phase}_pause_current`).textContent = pause.toFixed(1);
+    const data = {
+      influent: { pulse, pause }
+    };
+    console.log('🔄 Verstuur puls-pauze instellingen:', data);
+    sbrSocket.emit(SBR_CONFIG.events.setPulsePauseSettings, data);
   }
-  if (Object.keys(data).length > 0) {
-    console.log('🔄 Puls-pauze instellingen opgeslagen:', data);
-    // Toekomstig: sbrSocket.emit('set_pulse_pause_settings', data);
+});
+
+// Server bevestiging: live bijwerken
+sbrSocket.on(SBR_CONFIG.events.pulsePauseUpdated, settings => {
+  console.log('✅ Puls-pauze instelling opgeslagen:', settings);
+  const tr = pulseForm.querySelector(`tr[data-phase="influent"]`);
+  if (tr) {
+    const cfg = settings.influent;
+    tr.querySelector(`#influent_pulse_current`).textContent = cfg.pulse.toFixed(1);
+    tr.querySelector(`#influent_pause_current`).textContent = cfg.pause.toFixed(1);
   }
+});
+
+// Foutafhandeling
+sbrSocket.on('sbr_error', error => {
+  console.error('❌ SBR error:', error);
+  alert(`Fout: ${error.error}`);
 });
