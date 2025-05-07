@@ -93,6 +93,10 @@ def init_routes(app):
             plot_url=url_for('plot.sensor_plot_png')
         )
     
+    @app.route('/grafana')
+    def grafana():
+        return render_template('grafana_embed.html')
+
     @app.route('/sbr')
     def sbr():
         cycle_active = get_setting('sbr_cycle_active', '0') == '1'
