@@ -290,7 +290,7 @@ class SBRController:
         influent_should_be_on gebruikt om de pompstatus (ON/OFF) te bepalen.
         """
         log(f"🔍 Start _apply_phase_logic_pumps voor fase: {phase}, influent_should_be_on: {influent_should_be_on}")
-        if phase == 'wait':
+        if not self.start_event.is_set():
             log("🔍 Pauze-fase: alle pompen uit")
             return self._auto_off_all()
 
