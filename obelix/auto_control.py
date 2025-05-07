@@ -48,11 +48,14 @@ class SBRController:
             if u['type']=='analog' and u['slave_id']==5
         )
         self.level_channel = 0
-        
+        self.ph_channel    = 1
+        self.temp_channel  = 2
+
         self._update_phase_end_conditions()
 
-        # Temperatuursensor op slave ID 5, kanaal 2
-        self.temp_channel  = 2
+        self.ph_threshold = float(get_setting('sbr_ph_threshold', '6.8'))
+
+        
 
         # Laad heating valve setpoints (°C)
         DEFAULT_HEAT_ON  = 30
@@ -368,6 +371,8 @@ class SBRController:
             # Puls-pauze logica voor influent fase
             influent_should_be_on = True  # Standaard AAN voor niet-influent fases
             if phase == 'influent':
+                
+                
                 pulse_time = float(get_setting('pulse_influent_seconds', '10.0'))
                 pause_time = float(get_setting('pause_influent_seconds', '20.0'))
                 cycle_time = pulse_time + pause_time
@@ -375,7 +380,21 @@ class SBRController:
 
                 if cycle_time > 0:
                     cycle_position = self.phase_elapsed % cycle_time
-                    influent_should_be_on = (cycle_position < pulse_time)
+
+                    ph_raw = get_dummy_value(self.level_unit, self.ph_channel)
+                    if ph_raw is None:
+                        with modbus_lock:
+                            ph_raw = self.clients[self.level_unit].read_register(
+                                self.ph_channel, functioncode=4
+                            )
+                    cal = get_calibration(self.level_unit, self.ph_channel)
+                    ph_value = ph_raw * cal['scale'] + cal['offset']
+                    pHstop = False
+                    if ph_value < self.ph_threshold:
+                        pHstop = True
+                        log(f"ℹ pH {ph_value:.2f} < threshold {self.ph_threshold}, influent pomp OFF")
+                    
+                    influent_should_be_on = (cycle_position < pulse_time) and not pHstop
                     current_state = 'ON' if influent_should_be_on else 'OFF'
                     log(f"🚰 Influent pomp: AUTO_{current_state} "
                         f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
