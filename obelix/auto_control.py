@@ -390,6 +390,7 @@ class SBRController:
                     cal = get_calibration(self.level_unit, self.ph_channel)
                     ph_value = ph_raw * cal['scale'] + cal['offset']
                     pHstop = False
+                    log(f"ℹ pH {ph_value:.2f}; threshold {self.ph_threshold}")
                     if ph_value < self.ph_threshold:
                         pHstop = True
                         log(f"ℹ pH {ph_value:.2f} < threshold {self.ph_threshold}, influent pomp OFF")
