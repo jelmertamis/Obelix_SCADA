@@ -4,7 +4,7 @@ Installeer één keer:
     pip install influxdb==5.3.1
 """
 
-from influxdb import InfluxDBClient
+from influxdb import InfluxDBClient # type: ignore
 import time
 
 # --- Pas deze constants zo nodig aan -----------------------------

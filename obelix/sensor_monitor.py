@@ -8,6 +8,7 @@ from obelix.database import get_calibration, get_dummy_value
 from obelix.sensor_database import save_sensor_reading
 from obelix.modbus_client import get_clients, modbus_lock, modbus_initialized
 from obelix.utils import log
+from obelix.influx_integration import write_sensor_reading      # <<<  NIEUW
 
 def start_sensor_monitor(socketio):
     modbus_initialized.wait()
@@ -59,6 +60,11 @@ def start_sensor_monitor(socketio):
                                 'value':    round(val, 2),
                                 'unit':     cal.get('unit', '')
                             })
+
+                            # -------------  NIEUW: schrijf direct naar InfluxDB
+                            write_sensor_reading(i, ch, val)
+                            # -------------------------------------------------
+
                         except Exception as e:
                             log(f"⚠ Error reading {unit['name']} ch{ch}: {e}")
         socketio.emit('sensor_update', data, namespace='/sensors')
