@@ -53,7 +53,10 @@ class SBRController:
 
         self._update_phase_end_conditions()
 
-        self.ph_threshold = float(get_setting('sbr_ph_threshold', '6.8'))
+        self.ph_threshold_stop = float(get_setting('sbr_ph_threshold_stop', '6.8'))
+        self.ph_threshold_start = float(get_setting('sbr_ph_threshold_start', '7.1'))
+        self.pHstop = False
+        
 
         
 
@@ -349,7 +352,7 @@ class SBRController:
         log("🔄 SBR thread started")
         phases = self.phases
         last_pulse_state = None
-
+        
         while True:
             log(f"🔍 Run loop tick - start_event: {self.start_event.is_set()}, fase: {self.current_phase}, "
                 f"phase_elapsed: {self.phase_elapsed}, timer: {self.timer}")
@@ -389,13 +392,16 @@ class SBRController:
                             )
                     cal = get_calibration(self.level_unit, self.ph_channel)
                     ph_value = ph_raw * cal['scale'] + cal['offset']
-                    pHstop = False
-                    log(f"ℹ pH {ph_value:.2f}; threshold {self.ph_threshold}")
-                    if ph_value < self.ph_threshold:
-                        pHstop = True
-                        log(f"ℹ pH {ph_value:.2f} < threshold {self.ph_threshold}, influent pomp OFF")
+                    log(f"ℹ pH {ph_value:.2f}; threshold {self.ph_threshold_stop}")
+                    if ph_value < self.ph_threshold_stop:
+                        self.pHstop = True
+                        log(f"ℹ pH {ph_value:.2f} < threshold {self.ph_threshold_stop}, influent pomp OFF")
+                    elif ph_value > self.ph_threshold_start:
+                        self.pHstop = False
+                        log(f"ℹ pH {ph_value:.2f} > threshold {self.ph_threshold_start}, influent pomp ON")
                     
-                    influent_should_be_on = (cycle_position < pulse_time) and not pHstop
+                    influent_should_be_on = (cycle_position < pulse_time) and not self.pHstop
+                    log(f"ℹ Special var : influent should be on = {influent_should_be_on}")
                     current_state = 'ON' if influent_should_be_on else 'OFF'
                     log(f"🚰 Influent pomp: AUTO_{current_state} "
                         f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
@@ -432,7 +438,7 @@ class SBRController:
             if raw is not None:
                 cal = get_calibration(self.level_unit, self.level_channel)
                 actual = raw * cal['scale'] + cal['offset']
-                log(f"🔍 Gekalibreerd niveau: {actual}")
+                log(f"🔍 Gekalibreerd niveau: {actual:.1f}")
 
             if phase == 'influent' and self.influent_threshold >= 0 and actual is not None:
                 log(f"🔍 Influent fase - actual: {actual}, threshold: {self.influent_threshold}")
