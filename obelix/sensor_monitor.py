@@ -30,7 +30,7 @@ def start_sensor_monitor(socketio):
     threading.Thread(target=storage_worker, daemon=True).start()
 
     while True:
-        log("SENSOR MONITOR tick...")
+        # log("SENSOR MONITOR tick...")
         start = time.time()
         data = []
         clients = modbus_client.get_clients()
@@ -70,7 +70,7 @@ def start_sensor_monitor(socketio):
 
                         except Exception as e:
                             log(f"⚠ Error reading {unit['name']} ch{ch}: {e}")
-        log(f"Emitting SENSOR update {len(data)} readings")
+        # log(f"Emitting SENSOR update {len(data)} readings")
         socketio.emit('sensor_update', data, namespace='/sensors')
         elapsed = time.time() - start
         time.sleep(max(0, Config.LIVE_POLL_INTERVAL - elapsed))

@@ -172,6 +172,7 @@ class SBRController:
         inst = self.clients[self.r302_unit]
         for coil in Config.R302_RELAY_MAPPING:
             mode = get_setting(f'r302_relay_{coil}_mode', 'AUTO')
+            log(f"AUTO ALL OFF get setting req feedback for r302_relay_{coil}_mode: {mode}")
             state= get_relay_state(self.r302_unit, coil)
             if mode == 'AUTO' and state != 'OFF':
                 with modbus_lock:
@@ -372,7 +373,7 @@ class SBRController:
             log(f"🔍 Verwerken fase: {phase}")
 
             # Puls-pauze logica voor influent fase
-            influent_should_be_on = True  # Standaard AAN voor niet-influent fases
+            influent_should_be_on = False  # Standaard AAN voor niet-influent fases
             if phase == 'influent':
                 
                 
@@ -384,6 +385,7 @@ class SBRController:
                 if cycle_time > 0:
                     cycle_position = self.phase_elapsed % cycle_time
 
+                    # pH start-stop check
                     ph_raw = get_dummy_value(self.level_unit, self.ph_channel)
                     if ph_raw is None:
                         with modbus_lock:
@@ -400,8 +402,10 @@ class SBRController:
                         self.pHstop = False
                         log(f"ℹ  pH {ph_value:.2f} > threshold {self.ph_threshold_start}, pH start activated")
                     
+                    # Evaluate whether the influent pump should be on
                     influent_should_be_on = (cycle_position < pulse_time) and not self.pHstop
-                    log(f"ℹ  Special var : influent should be on = {influent_should_be_on}")
+                    
+                    # Translate this in ON/OFF 
                     current_state = 'ON' if influent_should_be_on else 'OFF'
                     log(f"🚰 Influent pomp: AUTO_{current_state} "
                         f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
