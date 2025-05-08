@@ -395,13 +395,13 @@ class SBRController:
                     log(f"ℹ pH {ph_value:.2f}; threshold {self.ph_threshold_stop}")
                     if ph_value < self.ph_threshold_stop:
                         self.pHstop = True
-                        log(f"ℹ pH {ph_value:.2f} < threshold {self.ph_threshold_stop}, influent pomp OFF")
+                        log(f"ℹ  pH {ph_value:.2f} < threshold {self.ph_threshold_stop}, pH stop activated")
                     elif ph_value > self.ph_threshold_start:
                         self.pHstop = False
-                        log(f"ℹ pH {ph_value:.2f} > threshold {self.ph_threshold_start}, influent pomp ON")
+                        log(f"ℹ  pH {ph_value:.2f} > threshold {self.ph_threshold_start}, pH start activated")
                     
                     influent_should_be_on = (cycle_position < pulse_time) and not self.pHstop
-                    log(f"ℹ Special var : influent should be on = {influent_should_be_on}")
+                    log(f"ℹ  Special var : influent should be on = {influent_should_be_on}")
                     current_state = 'ON' if influent_should_be_on else 'OFF'
                     log(f"🚰 Influent pomp: AUTO_{current_state} "
                         f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
