@@ -6,12 +6,12 @@ from collections import defaultdict
 from obelix.config import Config
 from obelix.database import get_calibration, get_dummy_value
 from obelix.sensor_database import save_sensor_reading
-from obelix.modbus_client import get_clients, modbus_lock, modbus_initialized
+import obelix.modbus_client as modbus_client
+
 from obelix.utils import log
 from obelix.influx_integration import write_sensor_reading      # <<<  NIEUW
 
 def start_sensor_monitor(socketio):
-    modbus_initialized.wait()
     log(f"Sensor_monitor gestart: live={Config.LIVE_POLL_INTERVAL}s, store={Config.STORAGE_INTERVAL}s")
 
     buffer = defaultdict(list)
@@ -30,9 +30,10 @@ def start_sensor_monitor(socketio):
     threading.Thread(target=storage_worker, daemon=True).start()
 
     while True:
+        log("SENSOR MONITOR tick...")
         start = time.time()
         data = []
-        clients = get_clients()
+        clients = modbus_client.get_clients()
         if not clients:
             log("⚠ Geen Modbus-clients, overslaan live-update")
         else:
@@ -46,7 +47,7 @@ def start_sensor_monitor(socketio):
                             if dummy is not None:
                                 raw = dummy
                             else:
-                                with modbus_lock:
+                                with modbus_client.modbus_lock:
                                     raw = inst.read_register(ch, functioncode=4)
 
                             cal = get_calibration(i, ch)
@@ -62,11 +63,14 @@ def start_sensor_monitor(socketio):
                             })
 
                             # -------------  NIEUW: schrijf direct naar InfluxDB
-                            write_sensor_reading(i, ch, val)
+                            # log(f"fallback {modbus_client.fallback_mode}")
+                            if not modbus_client.fallback_mode:
+                                write_sensor_reading(i, ch, val)
                             # -------------------------------------------------
 
                         except Exception as e:
                             log(f"⚠ Error reading {unit['name']} ch{ch}: {e}")
+        log(f"Emitting SENSOR update {len(data)} readings")
         socketio.emit('sensor_update', data, namespace='/sensors')
         elapsed = time.time() - start
         time.sleep(max(0, Config.LIVE_POLL_INTERVAL - elapsed))
