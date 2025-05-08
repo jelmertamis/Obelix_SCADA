@@ -441,7 +441,7 @@ class SBRController:
                 log(f"🔍 Gekalibreerd niveau: {actual:.1f}")
 
             if phase == 'influent' and self.influent_threshold >= 0 and actual is not None:
-                log(f"🔍 Influent fase - actual: {actual}, threshold: {self.influent_threshold}")
+                log(f"🔍 Influent fase - actual: {actual:.1f}, threshold: {self.influent_threshold}")
                 if actual >= self.influent_threshold:
                     idx = phases.index(phase)
                     next_p = phases[(idx + 1) % len(phases)]
