@@ -181,11 +181,7 @@ def init_socketio(socketio):
             return
         emit('r302_update', r302_ctrl.get_status(), namespace='/r302', broadcast=True)
         ctrl = auto_control.sbr_controller
-        if ctrl and ctrl.start_event.is_set():
-            if ctrl.current_phase in ('react', 'wait'):
-                ctrl._auto_off_all()
-            else:
-                ctrl._apply_phase_logic_pumps(ctrl.current_phase)
+        ctrl._apply_phase_logic_pumps(ctrl.current_phase)
 
     # ----- SBR CYCLE -----
     @socketio.on('connect', namespace='/sbr')

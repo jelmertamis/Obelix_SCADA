@@ -400,7 +400,7 @@ class SBRController:
                         log(f"ℹ  pH {ph_value:.2f} < threshold {self.ph_threshold_stop}, pH stop activated")
                     elif ph_value > self.ph_threshold_start:
                         self.pHstop = False
-                        log(f"ℹ  pH {ph_value:.2f} > threshold {self.ph_threshold_start}, pH start activated")
+                        log(f"ℹ  pH {ph_value:.2f} > threshold {self.ph_threshold_start}, pH stop not active")
                     
                     # Evaluate whether the influent pump should be on
                     influent_should_be_on = (cycle_position < pulse_time) and not self.pHstop
@@ -410,11 +410,14 @@ class SBRController:
                     log(f"🚰 Influent pomp: AUTO_{current_state} "
                         f"(puls {pulse_time}s, pauze {pause_time}s, positie {cycle_position:.1f}s)")
 
-                    # Roep _apply_phase_logic_pumps aan bij staatverandering
-                    if last_pulse_state != current_state:
-                        log(f"🔍 Puls-pauze staat veranderd naar {current_state}, roep _apply_phase_logic_pumps aan")
+                    saved = get_relay_state(self.r302_unit, 0)  # 'ON' of 'OFF'
+                    saved_on = (saved == 'ON')
+                    if saved_on != influent_should_be_on:
+                        log(f"🔍 DB-state ({saved}) ≠ gewenste state ({current_state}), apply influent-logic")
                         self._apply_phase_logic_pumps('influent', influent_should_be_on=influent_should_be_on)
-                        last_pulse_state = current_state
+                        # last_pulse_state = current_state
+
+
                 else:
                     log("🔍 Ongeldige puls-pauze cyclus, pomp uit")
                     influent_should_be_on = False
