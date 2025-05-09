@@ -75,9 +75,9 @@ if (-not $tags) {
     $patch += 1
     $newVersion = "$major.$minor.$patch"
 
-    # Genereer release notes
-    $commitMessages = git log --pretty=%s $latestTag..HEAD
-    if ($commitMessages) {
+    # Genereer release notes — forceer altijd array
+    $commitMessages = @(git log --pretty=%s $latestTag..HEAD)
+    if ($commitMessages.Count -gt 0) {
         $releaseNotes = "Release Notes for $newVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
     } else {
         $releaseNotes = "Release Notes for $newVersion`n`nNo detailed commit messages available."
