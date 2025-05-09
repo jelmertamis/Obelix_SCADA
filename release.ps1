@@ -75,8 +75,10 @@ if (-not $tags) {
     $patch += 1
     $newVersion = "$major.$minor.$patch"
 
-    # Genereer release notes — forceer altijd array
-    $commitMessages = @(git log --pretty=%s $latestTag..HEAD)
+    # Genereer release notes — split correct in regels
+    $rawLog = git log --pretty=%s $latestTag..HEAD
+    $commitMessages = @($rawLog -split "`r?`n" | Where-Object { $_.Trim() -ne "" })
+
     if ($commitMessages.Count -gt 0) {
         $releaseNotes = "Release Notes for $newVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
     } else {
