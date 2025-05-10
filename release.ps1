@@ -20,70 +20,38 @@ git fetch $remote --tags
 $currentCommit = git rev-parse HEAD
 Write-Host "Huidige commit: $currentCommit"
 
-# Controleer of de huidige commit al getagd is
-$currentTags = git tag --points-at $currentCommit | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" } | Sort-Object {
-    $version = $_ -replace "^$tagPrefix", ""
-    [Version]::new(($version -split "\.")[0], ($version -split "\.")[1], ($version -split "\.")[2])
-} -Descending
-
-if ($currentTags) {
-    $currentVersion = $currentTags | Select-Object -First 1
-    Write-Host "Huidige commit heeft versie: $currentVersion" -ForegroundColor Cyan
-    if ($currentTags.Count -gt 1) {
-        Write-Warning "Meerdere tags ($($currentTags -join ', ')) wijzen naar dezelfde commit. Overweeg oudere tags te verwijderen."
-        $response = Read-Host "Wil je alle tags behalve de nieuwste ($currentVersion) verwijderen? (y/n)"
-        if ($response -eq 'y') {
-            $tagsToDelete = $currentTags | Where-Object { $_ -ne $currentVersion }
-            foreach ($tag in $tagsToDelete) {
-                Write-Host "Verwijder tag: $tag"
-                git tag -d $tag
-                git push $remote :refs/tags/$tag
-            }
-            Write-Host "Alleen tag $currentVersion behouden." -ForegroundColor Green
-        }
-    }
-} else {
-    Write-Host "Huidige commit heeft geen versie (geen tag)." -ForegroundColor Yellow
-}
-
 # Haal alle geldige tags op en zoek de nieuwste
 $tags = git tag | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" } | Sort-Object {
     $version = $_ -replace "^$tagPrefix", ""
     [Version]::new(($version -split "\.")[0], ($version -split "\.")[1], ($version -split "\.")[2])
 } -Descending
 
+# Als er geen tags zijn, starten we met versie v0.0.1
 if (-not $tags) {
     Write-Warning "Geen tags gevonden. Start met versie v0.0.1"
     $newVersion = "0.0.1"
     $releaseNotes = "Initial release"
 } else {
-    $latestTag = $tags | Select-Object -First 1
-    $latestTagCommit = git rev-list -n 1 $latestTag
-    Write-Host "Nieuwste tag: $latestTag (commit: $latestTagCommit)"
+    # Laatste en op één na laatste tags
+    $latestTag = $tags[0]
+    $previousTag = $tags[1]
 
-    if ($latestTagCommit -eq $currentCommit) {
-        Write-Host "Geen nieuwe commits sinds de laatste tag ($latestTag). Script wordt afgesloten." -ForegroundColor Yellow
+    Write-Host "Vorige tag: $previousTag → Laatste tag: $latestTag"
+
+    # Haal commit messages op tussen vorige en laatste tag
+    $range = "$previousTag..$latestTag"
+    $rawLog = & git log --pretty=%s $range
+
+    $commitMessages = $rawLog -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
+
+    if ($commitMessages.Count -eq 0) {
+        Write-Host "Geen nieuwe commits sinds $previousTag" -ForegroundColor Yellow
         exit 0
     }
 
-    # Bepaal nieuwe patchversie
-    $versionNumber = $latestTag -replace "^$tagPrefix", ""
-    $versionParts = $versionNumber -split "\."
-    $major = [int]$versionParts[0]
-    $minor = [int]$versionParts[1]
-    $patch = [int]$versionParts[2]
-    $patch += 1
-    $newVersion = "$major.$minor.$patch"
-
-    # Genereer release notes – leesbare weergave van alle commit messages
-    $rawLog = git log --pretty=%s $latestTag..HEAD
-    if ([string]::IsNullOrWhiteSpace($rawLog)) {
-        $releaseNotes = "Release Notes for $newVersion`n`nNo detailed commit messages available."
-    } else {
-        $commitMessages = $rawLog -split "`r?`n"
-        $releaseNotes = "Release Notes for $newVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
-    }
-    Write-Host "Release Notes:`n$releaseNotes" -ForegroundColor Cyan
+    $newVersion = ($latestTag -replace "^$tagPrefix", "") # De versie bepalen door de laatste tag
+    $releaseNotes = "Release Notes voor $newVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
+    Write-Host "`n$releaseNotes" -ForegroundColor Cyan
 }
 
 # Maak de nieuwe tag aan
