@@ -82,6 +82,25 @@ if ($GitStatus.Count -gt 0) {
 
 "" | Out-File $OutputFile -Append -Encoding UTF8
 
+# Step 5b: Voeg laatste release message toe (indien aanwezig)
+$ReleaseDir = "releases"
+if (Test-Path $ReleaseDir) {
+    $LatestReleaseFile = Get-ChildItem -Path $ReleaseDir -Filter "release-v*.md" |
+        Sort-Object { [Version]($_.BaseName -replace "release-v", "") } -Descending |
+        Select-Object -First 1
+
+    if ($LatestReleaseFile) {
+        Write-Host "Laatste release notes gevonden: $($LatestReleaseFile.Name)" -ForegroundColor Cyan
+        "`n## Laatste release notes (`$($LatestReleaseFile.Name)`):`n" | Out-File $OutputFile -Append -Encoding UTF8
+        Get-Content $LatestReleaseFile.FullName | Out-File $OutputFile -Append -Encoding UTF8
+        "" | Out-File $OutputFile -Append -Encoding UTF8
+    } else {
+        Write-Host "Geen release messages gevonden in $ReleaseDir." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Map 'releases/' bestaat niet, release notes worden overgeslagen." -ForegroundColor Yellow
+}
+
 Write-Host "Starting file aggregation..." -ForegroundColor Cyan
 
 # Step 6: Find matching files and process them
