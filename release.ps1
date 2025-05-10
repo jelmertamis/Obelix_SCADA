@@ -20,7 +20,7 @@ git fetch $remote --tags
 $currentCommit = git rev-parse HEAD
 Write-Host "Huidige commit: $currentCommit"
 
-# Haal alle geldige tags op en zoek de nieuwste
+# Haal de laatste tag op
 $tags = git tag | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" } | Sort-Object {
     $version = $_ -replace "^$tagPrefix", ""
     [Version]::new(($version -split "\.")[0], ($version -split "\.")[1], ($version -split "\.")[2])
@@ -31,19 +31,16 @@ if (-not $tags) {
     $newVersion = "0.0.1"
     $releaseNotes = "Initial release"
 } else {
-    # Laatste en op één na laatste tags
     $latestTag = $tags[0]
-    $previousTag = $tags[1]
+    Write-Host "Laatste tag: $latestTag"
 
-    Write-Host "Vorige tag: $previousTag → Laatste tag: $latestTag"
-
-    # Haal commit messages op tussen vorige en laatste tag
-    $range = "$previousTag..$currentCommit"
+    # Haal commit messages op tussen de laatste tag en de huidige commit (HEAD)
+    $range = "$latestTag..$currentCommit"
     $rawLog = & git log --pretty=%s $range
     $commitMessages = $rawLog -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
 
     if ($commitMessages.Count -eq 0) {
-        Write-Host "Geen nieuwe commits sinds $previousTag" -ForegroundColor Yellow
+        Write-Host "Geen nieuwe commits sinds $latestTag" -ForegroundColor Yellow
         exit 0
     }
 
