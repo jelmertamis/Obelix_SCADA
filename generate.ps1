@@ -102,5 +102,50 @@ Write-Host "Synchroniseer tags met $remote..."
 git fetch $remote --tags
 
 # Haal de laatste tag op en verhoog versie
-$tags = git tag | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" } | Sort-Object {
-    $version = $_ -replace "^$tagPrefix_
+$tags = git tag | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" }
+
+# We gebruiken een sorteerfunctie om de tags op versie te sorteren
+$sortedTags = $tags | Sort-Object {
+    $version = $_ -replace "^$tagPrefix", "" 
+    $versionParts = $version -split "\."
+    [Version]::new($versionParts[0], $versionParts[1], $versionParts[2])
+} -Descending
+
+# Haal de nieuwste tag op en verhoog de versie
+$latestTag = $sortedTags[0]
+Write-Host "Laatste tag: $latestTag"
+
+# Haal commit messages op tussen de laatste tag en de huidige commit (HEAD)
+$range = "$latestTag..HEAD"
+$rawLog = & git log --pretty=%s $range
+$commitMessages = $rawLog -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
+
+if ($commitMessages.Count -eq 0) {
+    Write-Host "Geen nieuwe commits sinds $latestTag" -ForegroundColor Yellow
+    exit 0
+}
+
+# Maak release notes
+$ReleaseNotes = "Release Notes voor $NewVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
+Write-Host "`n$ReleaseNotes" -ForegroundColor Cyan
+
+# Maak de nieuwe tag aan
+$NewTag = "$tagPrefix$NewVersion"
+Write-Host "Nieuwe tag aanmaken: $NewTag"
+
+if (git tag | Select-String "^$NewTag$") {
+    Write-Host "Tag $NewTag bestaat al. Verwijderen en opnieuw aanmaken..."
+    git tag -d $NewTag
+    git push $remote :refs/tags/$NewTag
+}
+
+# Stap 8: Maak de nieuwe tag en release notes aan
+try {
+    git tag -a $NewTag -m $ReleaseNotes
+    git push $remote $branch
+    git push $remote $NewTag
+    Write-Host "Release $NewTag succesvol aangemaakt en gepusht naar $remote." -ForegroundColor Green
+} catch {
+    Write-Error "Fout bij het aanmaken of pushen van de tag: $_"
+    exit 1
+}
