@@ -23,13 +23,13 @@ if (Test-Path $VersionFilePath) {
     }
 }
 
-# Stap 2: Verhoog de versie
-$VersionParts = $Version.Split('.')
+# Stap 2: Verwerk de versie om de "v" te verwijderen
+$VersionParts = $Version.TrimStart('v').Split('.')
 $Major = [int]$VersionParts[0]
 $Minor = [int]$VersionParts[1]
 $Patch = [int]$VersionParts[2]
 
-# Verhoog patchversie
+# Verhoog de patchversie
 $Patch += 1
 $NewVersion = "$Major.$Minor.$Patch"
 
@@ -103,50 +103,4 @@ git fetch $remote --tags
 
 # Haal de laatste tag op en verhoog versie
 $tags = git tag | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" } | Sort-Object {
-    $version = $_ -replace "^$tagPrefix", ""
-    [Version]::new(($version -split "\.")[0], ($version -split "\.")[1], ($version -split "\.")[2])
-} -Descending
-
-if (-not $tags) {
-    Write-Warning "Geen tags gevonden. Start met versie v0.0.1"
-    $NewVersion = "0.0.1"
-    $ReleaseNotes = "Initial release"
-} else {
-    $latestTag = $tags[0]
-    Write-Host "Laatste tag: $latestTag"
-
-    # Haal commit messages op tussen de laatste tag en de huidige commit (HEAD)
-    $range = "$latestTag..HEAD"
-    $rawLog = & git log --pretty=%s $range
-    $commitMessages = $rawLog -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
-
-    if ($commitMessages.Count -eq 0) {
-        Write-Host "Geen nieuwe commits sinds $latestTag" -ForegroundColor Yellow
-        exit 0
-    }
-
-    # Maak release notes
-    $ReleaseNotes = "Release Notes voor $NewVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
-    Write-Host "`n$ReleaseNotes" -ForegroundColor Cyan
-}
-
-# Maak de nieuwe tag aan
-$NewTag = "$tagPrefix$NewVersion"
-Write-Host "Nieuwe tag aanmaken: $NewTag"
-
-if (git tag | Select-String "^$NewTag$") {
-    Write-Host "Tag $NewTag bestaat al. Verwijderen en opnieuw aanmaken..."
-    git tag -d $NewTag
-    git push $remote :refs/tags/$NewTag
-}
-
-# Stap 8: Maak de nieuwe tag en release notes aan
-try {
-    git tag -a $NewTag -m $ReleaseNotes
-    git push $remote $branch
-    git push $remote $NewTag
-    Write-Host "Release $NewTag succesvol aangemaakt en gepusht naar $remote." -ForegroundColor Green
-} catch {
-    Write-Error "Fout bij het aanmaken of pushen van de tag: $_"
-    exit 1
-}
+    $version = $_ -replace "^$tagPrefix_
