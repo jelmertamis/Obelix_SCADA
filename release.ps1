@@ -26,7 +26,6 @@ $tags = git tag | Where-Object { $_ -match "^$tagPrefix\d+\.\d+\.\d+$" } | Sort-
     [Version]::new(($version -split "\.")[0], ($version -split "\.")[1], ($version -split "\.")[2])
 } -Descending
 
-# Als er geen tags zijn, starten we met versie v0.0.1
 if (-not $tags) {
     Write-Warning "Geen tags gevonden. Start met versie v0.0.1"
     $newVersion = "0.0.1"
@@ -39,9 +38,8 @@ if (-not $tags) {
     Write-Host "Vorige tag: $previousTag → Laatste tag: $latestTag"
 
     # Haal commit messages op tussen vorige en laatste tag
-    $range = "$previousTag..$latestTag"
+    $range = "$previousTag..$currentCommit"
     $rawLog = & git log --pretty=%s $range
-
     $commitMessages = $rawLog -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
 
     if ($commitMessages.Count -eq 0) {
@@ -49,7 +47,17 @@ if (-not $tags) {
         exit 0
     }
 
-    $newVersion = ($latestTag -replace "^$tagPrefix", "") # De versie bepalen door de laatste tag
+    # Haal versie-informatie op uit de laatste tag
+    $versionParts = ($latestTag -replace "^$tagPrefix", "") -split "\."
+    $major = [int]$versionParts[0]
+    $minor = [int]$versionParts[1]
+    $patch = [int]$versionParts[2]
+
+    # Verhoog de patchversie
+    $patch += 1
+    $newVersion = "$major.$minor.$patch"
+
+    # Maak release notes
     $releaseNotes = "Release Notes voor $newVersion`n`nChanges:`n- " + ($commitMessages -join "`n- ")
     Write-Host "`n$releaseNotes" -ForegroundColor Cyan
 }
@@ -59,8 +67,9 @@ $newTag = "$tagPrefix$newVersion"
 Write-Host "Nieuwe tag aanmaken: $newTag"
 
 if (git tag | Select-String "^$newTag$") {
-    Write-Error "Tag $newTag bestaat al! Gebruik 'git tag -d $newTag' om lokaal te verwijderen en 'git push $remote :refs/tags/$newTag' om remote te verwijderen."
-    exit 1
+    Write-Host "Tag $newTag bestaat al. Verwijderen en opnieuw aanmaken..."
+    git tag -d $newTag
+    git push $remote :refs/tags/$newTag
 }
 
 try {
