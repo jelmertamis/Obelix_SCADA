@@ -4,23 +4,31 @@
 $OutputFile = "project_code.txt"
 $PromptFile = "prompt.md"
 
-# Step 1: Initialize version
-$Version = "1.0"  # Default version
-if (Test-Path $OutputFile) {
-    Write-Host "Reading existing project_code.txt for version..." -ForegroundColor Cyan
-    # Read the file and find the version line
-    $Content = Get-Content $OutputFile -ErrorAction SilentlyContinue
-    $VersionLine = $Content | Where-Object { $_ -match "^Versie: \d+\.\d+$" } | Select-Object -First 1
-    if ($VersionLine) {
-        # Extract version number (e.g., "1.0" from "Versie: 1.0")
-        $Version = $VersionLine -replace "^Versie: (\d+\.\d+)$", '$1'
-        # Increment minor version
-        $Major, $Minor = $Version.Split('.')
-        $Minor = [int]$Minor + 1
-        $Version = "$Major.$Minor"
-    } else {
-        Write-Host "No version found in existing file. Using default: $Version" -ForegroundColor Yellow
+# Step 1: Determine version from latest Git tag and previous project_code.txt
+$Version = "0.0.0.1"  # Default fallback
+$BaseVersion = "0.0.0"
+$Minor = 1
+
+$GitTag = git describe --tags --abbrev=0 2>$null
+if ($GitTag) {
+    $BaseVersion = $GitTag.Trim()
+    $Version = "$BaseVersion.$Minor"
+
+    if (Test-Path $OutputFile) {
+        Write-Host "Checking existing project_code.txt for previous version..." -ForegroundColor Cyan
+        $Content = Get-Content $OutputFile -ErrorAction SilentlyContinue
+        $VersionLine = $Content | Where-Object { $_ -match "^Versie: $BaseVersion\.(\d+)$" } | Select-Object -First 1
+        if ($VersionLine) {
+            $PreviousMinor = [regex]::Match($VersionLine, "$BaseVersion\.(\d+)").Groups[1].Value
+            $Minor = [int]$PreviousMinor + 1
+            $Version = "$BaseVersion.$Minor"
+            Write-Host "Found previous base version, incrementing to: $Version" -ForegroundColor Green
+        } else {
+            Write-Host "New base version detected: $BaseVersion. Starting with .$Minor" -ForegroundColor Yellow
+        }
     }
+} else {
+    Write-Host "No Git tags found. Using fallback version: $Version" -ForegroundColor Red
 }
 
 # Step 2: Delete existing project_code.txt if it exists
