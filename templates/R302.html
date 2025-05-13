@@ -1,4 +1,3 @@
-<!-- templates/R302.html -->
 {% extends 'base.html' %}
 
 {% block title %}R302 Reactor Control{% endblock %}
@@ -6,113 +5,75 @@
 {% block head %}
 <style>
   /* ⚙️ Section en inhoud centreren */
-  section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    padding: 1rem 0;
-  }
+  section { display: flex; flex-direction: column; align-items: center; width: 100%; padding: 1rem 0; }
+
+  /* SVG styling voor reactor diagram */
+  #reactor-diagram { margin-bottom: 2rem; }
+  .pump-on { fill: #28a745; stroke: #333; stroke-width: 2; cursor: pointer; }
+  .pump-off { fill: #dc3545; stroke: #333; stroke-width: 2; cursor: pointer; }
+  .compressor-on { fill: #ffc107; stroke: #333; stroke-width: 2; cursor: pointer; }
+  .compressor-off { fill: #9e9e9e; stroke: #333; stroke-width: 2; cursor: pointer; }
+  text.diagram-label { font-size: 12px; pointer-events: none; }
 
   /* 🗂️ Grid-container voor relay-kaarten */
-  #relay-controls {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(180px, 1fr));
-    gap: 1rem;
-    margin: 1rem auto;
-    max-width: 1200px;
-    justify-content: center;
-  }
+  #relay-controls { display: grid; grid-template-columns: repeat(6, minmax(180px, 1fr)); gap: 1rem; margin: 1rem auto; max-width: 1200px; justify-content: center; }
 
   /* 📦 Relay-kaart styling */
-  .relay-control {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    width: 180px;
-    height: 200px;
-    padding: 1rem;
-    background: #fff;
-    border-radius: 0.5rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    overflow: visible; /* Laat popup buiten de kaart zien */
-  }
-  .relay-control h3 {
-    font-size: 1.1rem;
-    margin: 0;
-    text-align: center;
-  }
+  .relay-control { position: relative; display: flex; flex-direction: column; justify-content: space-between; align-items: center; width: 180px; height: 200px; padding: 1rem; background: #fff; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: visible; }
+  .relay-control h3 { font-size: 1.1rem; margin: 0; text-align: center; }
 
   /* 🔘 Status-knop styling */
-  .status-btn {
-    width: 100%;
-    height: 3.5rem;
-    font-size: 1rem;
-    font-weight: bold;
-    border: none;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: box-shadow 0.3s ease, border 0.3s ease;
-  }
+  .status-btn { width: 100%; height: 3.5rem; font-size: 1rem; font-weight: bold; border: none; border-radius: 0.25rem; cursor: pointer; color: #fff; display: flex; align-items: center; justify-content: center; transition: box-shadow 0.3s ease, border 0.3s ease; }
   .status-manual-on   { background: #28a745; }
   .status-manual-off  { background: #dc3545; }
   .status-auto-on,
-  .status-auto-off {
-    border: 3px solid orange;
-    box-shadow: 0 0 6px rgba(255,165,0,0.7);
-  }
+  .status-auto-off { border: 3px solid orange; box-shadow: 0 0 6px rgba(255,165,0,0.7); }
   .status-auto-on  { background: #28a745; }
   .status-auto-off { background: #dc3545; }
 
   /* 🔽 Pop-up styling */
-  .mode-popup {
-    position: absolute;
-    top: 70%;               /* In plaats van onder de kaart, over de kaart */
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0;
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 0.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-    min-width: 180px;
-    z-index: 1000;          /* Boven alle andere elementen */
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-  .mode-popup.show {
-    visibility: visible;
-    opacity: 1;
-  }
+  .mode-popup { position: absolute; top: 70%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.5rem 0; background: #fff; border: 1px solid #ccc; border-radius: 0.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.2); min-width: 180px; z-index: 1000; visibility: hidden; opacity: 0; transition: opacity 0.2s ease; }
+  .mode-popup.show { visibility: visible; opacity: 1; }
 
   /* 🔲 Knoppen in de pop-up */
-  .mode-popup button {
-    width: 80%;
-    height: 3rem;
-    font-size: 0.9rem;
-    border: none;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+  .mode-popup button { width: 80%; height: 3rem; font-size: 0.9rem; border: none; border-radius: 0.25rem; cursor: pointer; color: #fff; display: flex; align-items: center; justify-content: center; }
   .mode-popup .manual-on   { background: #28a745; }
   .mode-popup .manual-off  { background: #dc3545; }
   .mode-popup .auto        { background: #ffc107; color: #333; }
   .mode-popup button:hover { opacity: 0.9; }
+
+  /* 1. Algemene tekststijl */
+  .diagram-label {
+    font-size: 12px;
+    fill: #000;
+    pointer-events: none;
+  }
+
+  /* 2. Specifieke centrering voor de valve‐tekst */
+  .valve-label {
+    text-anchor: middle;
+  }
+
+  /* 3. Valve-groep styling */
+  
+  /* 4. Only fill the polygons inside the valve‐shape group */
+  .valve-shape.valve-off polygon {
+    stroke: #333;
+    cursor: pointer;
+    fill: #9e9e9e;       /* grijs = “dicht” */
+    stroke-width: 2;
+  }
+  .valve-shape.valve-on polygon {
+    stroke: #333;
+    cursor: pointer;
+    fill: #28a745;       /* groen = “open” */
+    stroke-width: 2;
+  }
+
+ 
+
+
+
 </style>
 {% endblock %}
 
@@ -120,21 +81,55 @@
 <section>
   <h1>R302 Reactor Control</h1>
 
+  <!-- Geïntegreerd reactordiagram -->
+  <svg id="reactor-diagram" width="600" height="500">
+    <!-- Reactor Vessel R302 -->
+    <rect x="250" y="100" width="100" height="200" fill="#4caf50" stroke="#333" stroke-width="3"/>
+    <text x="260" y="90" class="diagram-label">R302</text>
+
+    <!-- P301 Influent Pump -->
+    <line x1="150" y1="200" x2="250" y2="200" stroke="black" stroke-width="2"/>
+    <circle id="pump-0" cx="200" cy="200" r="15" class="pump-off" />
+    <text x="180" y="185" class="diagram-label">P301</text>
+
+    <!-- P303A Effluent Pump -->
+    <line x1="350" y1="200" x2="450" y2="200" stroke="black" stroke-width="2"/>
+    <circle id="pump-1" cx="400" cy="200" r="15" class="pump-off" />
+    <text x="380" y="185" class="diagram-label">P303A</text>
+
+    <!-- P406 Nutrient Pump -->
+    <line x1="150" y1="325" x2="200" y2="325" stroke="black" stroke-width="2"/>
+    <line x1="200" y1="325" x2="200" y2="250" stroke="black" stroke-width="2"/>
+    <line x1="200" y1="250" x2="250" y2="250" stroke="black" stroke-width="2"/>
+    <circle id="pump-2" cx="200" cy="287.5" r="15" class="pump-off" />
+    <text x="180" y="275" class="diagram-label">P406</text>
+
+    <!-- K303 Compressor -->
+    <line x1="300" y1="300" x2="300" y2="400" stroke="black" stroke-width="2"/>
+    <circle id="compressor-3" cx="300" cy="375" r="15" class="compressor-off" />
+    <text x="280" y="360" class="diagram-label">K303</text>
+
+    <!-- K304 Compressor -->
+    <line x1="350" y1="300" x2="350" y2="400" stroke="black" stroke-width="2"/>
+    <circle id="compressor-4" cx="350" cy="375" r="15" class="compressor-off" />
+    <text x="330" y="360" class="diagram-label">K304</text>
+
+    <!-- Sensorwaarden (gepositioneerd rechts en met extra spacing) -->
+    <text x="260" y="140" class="diagram-label" id="sensor-ph">pH: --</text>
+    <text x="260" y="180" class="diagram-label" id="sensor-do">DO: --</text>
+    <text x="260" y="220" class="diagram-label" id="sensor-temp">Temp: -- °C</text>
+    <text x="260" y="260" class="diagram-label" id="sensor-level">Level: -- %</text>
+
+    <g id="valve-5" class="valve-shape valve-off" transform="translate(400,300)">
+      <polygon points="-10,-10 0,0 -10,10"/>
+      <polygon points=" 10,-10 0,0  10,10"/>
+      <text x="0" y="25" class="diagram-label valve-label">A503</text>
+    </g>
+    
+  </svg>
+
   <h2>Relay Controls</h2>
   <div id="relay-controls"></div>
-
-  <h2>Sensors</h2>
-  <table class="sensor-table" style="max-width:800px; width:100%; margin-top:1rem;">
-    <thead>
-      <tr>
-        <th>Naam</th>
-        <th>Ruwe Waarde</th>
-        <th>Gecalibreerd</th>
-        <th>Eenheid</th>
-      </tr>
-    </thead>
-    <tbody id="sensorBody"></tbody>
-  </table>
 </section>
 {% endblock %}
 
@@ -143,101 +138,103 @@
 <script>
   const r302socket   = io('/r302');
   const sensorSocket = io('/sensors');
-  const relayLabels  = {
-    0:'Influent Pump',1:'Effluent Pump',2:'Nutrient Pump',
-    3:'Compressor (K303)',4:'Compressor (K304)',5:'Heating Valve (A503)'
-  };
-  const sensorLabels = {0:'Level Sensor',1:'pH',2:'Temperature',3:'Dissolved Oxygen'};
+  const relayLabels  = {0:'Influent Pump',1:'Effluent Pump',2:'Nutrient Pump',3:'Compressor (K303)',4:'Compressor (K304)',5:'Heating Valve (A503)'};
+  const sensorLabels = {0:'Level',1:'pH',2:'Temperature',3:'Dissolved Oxygen'};
   const relayModes   = {};
+  const svgMap = {
+    0: { id: 'pump-0',        type: 'pump'       },
+    1: { id: 'pump-1',        type: 'pump'       },
+    2: { id: 'pump-2',        type: 'pump'       },
+    3: { id: 'compressor-3',  type: 'compressor' },
+    4: { id: 'compressor-4',  type: 'compressor' },
+    5: { id: 'valve-5',       type: 'valve'      }  // Heating Valve A503
+  };
 
+  // Bouw relay controls
   function buildRelayControls(){
-    const container = document.getElementById('relay-controls');
-    container.innerHTML = '';
-    for(let coil = 0; coil <= 5; coil++){
-      relayModes[coil] = 'AUTO';
-      container.insertAdjacentHTML('beforeend', `
+    const container = document.getElementById('relay-controls'); container.innerHTML = '';
+    for(let coil=0; coil<=5; coil++){
+      relayModes[coil]='AUTO';
+      container.insertAdjacentHTML('beforeend',`
         <div class="relay-control" id="relay-${coil}">
           <h3>${relayLabels[coil]}</h3>
           <button class="status-btn status-auto-off" id="status-${coil}">Loading…</button>
           <div class="mode-popup" id="popup-${coil}">
-            <button class="manual-on"  data-coil="${coil}">Manual ON</button>
+            <button class="manual-on" data-coil="${coil}">Manual ON</button>
             <button class="manual-off" data-coil="${coil}">Manual OFF</button>
-            <button class="auto"       data-coil="${coil}">AUTO</button>
+            <button class="auto" data-coil="${coil}">AUTO</button>
           </div>
         </div>`);
     }
   }
 
+  // Update relay status
   function updateRelayStatus(coil, physOn, mode){
-    const btn = document.getElementById(`status-${coil}`);
-    btn.className = 'status-btn';
-    relayModes[coil] = mode;
-    if(mode === 'MANUAL_ON'){
-      btn.textContent = 'Manual ON';
-      btn.classList.add('status-manual-on');
-    } else if(mode === 'MANUAL_OFF'){
-      btn.textContent = 'Manual OFF';
-      btn.classList.add('status-manual-off');
-    } else {
-      btn.textContent = physOn ? 'Auto ON' : 'Auto OFF';
-      btn.classList.add(physOn ? 'status-auto-on' : 'status-auto-off');
+    const btn=document.getElementById(`status-${coil}`);
+    btn.className='status-btn'; relayModes[coil]=mode;
+    if(mode==='MANUAL_ON'){ btn.textContent='Manual ON'; btn.classList.add('status-manual-on'); }
+    else if(mode==='MANUAL_OFF'){ btn.textContent='Manual OFF'; btn.classList.add('status-manual-off'); }
+    else{ btn.textContent=physOn?'Auto ON':'Auto OFF'; btn.classList.add(physOn?'status-auto-on':'status-auto-off'); }
+    const map = svgMap[coil];
+    if(map){
+      const el = document.getElementById(map.id);
+      if(el){
+        const onCls  = map.type === 'pump'        ? 'pump-on'
+                      : map.type === 'compressor'? 'compressor-on'
+                      : 'valve-on';
+        const offCls = map.type === 'pump'        ? 'pump-off'
+                      : map.type === 'compressor'? 'compressor-off'
+                      : 'valve-off';
+        el.classList.toggle(onCls,  physOn);
+        el.classList.toggle(offCls, !physOn);
+      }
     }
   }
 
-  function hideAllPopups(){
-    document.querySelectorAll('.mode-popup.show')
-            .forEach(p => p.classList.remove('show'));
-  }
+  // Verberg popups
+  function hideAllPopups(){ document.querySelectorAll('.mode-popup.show').forEach(p=>p.classList.remove('show')); }
 
   buildRelayControls();
 
-  document.getElementById('relay-controls').addEventListener('click', e => {
+  // Interactie relay controls
+  document.getElementById('relay-controls').addEventListener('click', e=>{
     if(e.target.classList.contains('status-btn')){
       e.stopPropagation();
-      const coil = e.target.id.split('-')[1];
-      const popup = document.getElementById(`popup-${coil}`);
-      const was = popup.classList.contains('show');
+      const coil=e.target.id.split('-')[1];
+      const popup=document.getElementById(`popup-${coil}`);
+      const was=popup.classList.contains('show');
       hideAllPopups();
       if(!was) popup.classList.add('show');
       return;
     }
-    const choice = e.target.closest('.mode-popup button');
+    const choice=e.target.closest('.mode-popup button');
     if(choice){
       e.stopPropagation();
-      const coil = Number(choice.dataset.coil);
+      const coil=Number(choice.dataset.coil);
       let mode = 'AUTO';
-      if(choice.classList.contains('manual-on'))   mode = 'MANUAL_ON';
-      else if(choice.classList.contains('manual-off')) mode = 'MANUAL_OFF';
+      if(choice.classList.contains('manual-on'))   mode='MANUAL_ON';
+      else if(choice.classList.contains('manual-off')) mode='MANUAL_OFF';
       r302socket.emit('set_mode',{coil,mode});
-      updateRelayStatus(coil, mode !== 'MANUAL_OFF', mode);
+      updateRelayStatus(coil, mode!=='MANUAL_OFF', mode);
       hideAllPopups();
     }
   });
 
   document.addEventListener('click', hideAllPopups);
 
-  r302socket.on('r302_init', status => {
-    Object.entries(status).forEach(([coil, info]) =>
-      updateRelayStatus(coil, info.physical, info.mode)
-    );
-  });
-  r302socket.on('r302_update', status => {
-    Object.entries(status).forEach(([coil, info]) =>
-      updateRelayStatus(coil, info.physical, info.mode)
-    );
-  });
+  // Init en updates voor relays
+  r302socket.on('r302_init', status => Object.entries(status).forEach(([c,info])=>updateRelayStatus(c,info.physical,info.mode)));
+  r302socket.on('r302_update', status => Object.entries(status).forEach(([c,info])=>updateRelayStatus(c,info.physical,info.mode)));
 
+  // Update sensorwaarden in SVG
   sensorSocket.on('sensor_update', readings => {
-    const tbody = document.getElementById('sensorBody');
-    tbody.innerHTML = '';
     readings.filter(r => r.slave_id === 5).forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${sensorLabels[r.channel]}</td>
-        <td>${r.raw}</td>
-        <td>${r.value.toFixed(2)}</td>
-        <td>${r.unit || ''}</td>`;
-      tbody.appendChild(tr);
+      const idMap = {0:'sensor-level',1:'sensor-ph',2:'sensor-temp',3:'sensor-do'};
+      const id = idMap[r.channel];
+      if(id){
+        const suffix = id==='sensor-temp'? ' °C' : id==='sensor-do'? ' mg/L' : id==='sensor-level'? ' %' : '';
+        document.getElementById(id).textContent = `${document.getElementById(id).textContent.split(':')[0]}: ${r.value.toFixed(2)}${suffix}`;
+      }
     });
   });
 </script>
