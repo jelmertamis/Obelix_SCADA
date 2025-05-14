@@ -75,19 +75,23 @@
   const r302socket = io('/r302');
   const sensorSocket = io('/sensors');
   const svgMap = {
-    0: { id: 'pump-0', type: 'pump' },
-    1: { id: 'pump-1', type: 'pump' },
-    2: { id: 'pump-2', type: 'pump' },
-    3: { id: 'compressor-3', type: 'compressor' },
-    4: { id: 'compressor-4', type: 'compressor' },
-    5: { id: 'valve-5', type: 'valve' }
-  };
+  0: { id: 'pump-0',       type: 'pump',       name: 'P301' },
+  1: { id: 'pump-1',       type: 'pump',       name: 'P303A' },
+  2: { id: 'pump-2',       type: 'pump',       name: 'P406' },
+  3: { id: 'compressor-3', type: 'compressor', name: 'K303' },
+  4: { id: 'compressor-4', type: 'compressor', name: 'K304' },
+  5: { id: 'valve-5',      type: 'valve',      name: 'A503' }
+};
   const popups = {};
   function createModePopup(coil) {
     const popup = document.createElement('div');
     popup.className = 'mode-popup';
     popup.id = `popup-${coil}`;
+    const dispName = svgMap[coil].name;
     popup.innerHTML = `
+      <div class="popup-header" style="font-weight:bold; margin-bottom:0.5rem;">
+        ${dispName}
+      </div>
       <button class='manual-on' data-coil='${coil}'>Manual ON</button>
       <button class='manual-off' data-coil='${coil}'>Manual OFF</button>
       <button class='auto' data-coil='${coil}'>AUTO</button>
@@ -123,8 +127,27 @@
       e.stopPropagation();
       hideAllPopups();
       const popup = popups[coil];
-      popup.style.left = `${e.pageX + 8}px`;
-      popup.style.top = `${e.pageY + 8}px`;
+
+
+        // bepaal popup-afmetingen
+      const pw = popup.offsetWidth;
+      const ph = popup.offsetHeight;
+
+      // initiële positie rechts­onder van de muis
+      let left = e.pageX + 8;
+      let top  = e.pageY + 8;
+
+      // indien buiten rechterrand, plaats links van muis
+      if (left + pw > window.innerWidth) {
+        left = e.pageX - pw - 8;
+      }
+      // indien buiten onderrand, plaats boven muis
+      if (top + ph > window.innerHeight) {
+        top = e.pageY - ph - 8;
+      }
+
+      popup.style.left = `${left}px`;
+      popup.style.top  = `${top}px`;
       popup.classList.add('show');
     });
   });
