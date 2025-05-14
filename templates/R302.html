@@ -162,33 +162,34 @@
   <svg id="reactor-diagram" width="600" height="500">
     <!-- Reactorvat R302 -->
     <rect x="250" y="100" width="100" height="200" fill="#4caf50" stroke="#333" stroke-width="3"/>
-    <text x="260" y="90" class="diagram-label">R302</text>
+    <text x="270" y="90" style="font-size:26px" class="diagram-label">R302</text>
 
     <!-- Influent-pomp P301 -->
     <line x1="150" y1="200" x2="250" y2="200" stroke="black" stroke-width="2"/>
     <circle id="pump-0" cx="200" cy="200" r="15" class="pump-off"/>
-    <text x="180" y="185" class="diagram-label">P301</text>
+    <text x="185" y="180" class="diagram-label">P301</text>
 
     <!-- Effluent-pomp P303A -->
     <line x1="350" y1="200" x2="450" y2="200" stroke="black" stroke-width="2"/>
     <circle id="pump-1" cx="400" cy="200" r="15" class="pump-off"/>
-    <text x="380" y="185" class="diagram-label">P303A</text>
+    <text x="380" y="180" class="diagram-label">P303A</text>
 
     <!-- Nutriënten-pomp P406 -->
     <line x1="150" y1="325" x2="200" y2="325" stroke="black" stroke-width="2"/>
     <line x1="200" y1="325" x2="200" y2="250" stroke="black" stroke-width="2"/>
     <line x1="200" y1="250" x2="250" y2="250" stroke="black" stroke-width="2"/>
     <circle id="pump-2" cx="200" cy="287.5" r="15" class="pump-off"/>
-    <text x="180" y="275" class="diagram-label">P406</text>
+    <text x="155" y="290" class="diagram-label">P406</text>
 
     <!-- Compressoren K303 & K304 -->
-    <line x1="300" y1="300" x2="300" y2="400" stroke="black" stroke-width="2"/>
-    <circle id="compressor-3" cx="300" cy="375" r="15" class="compressor-off"/>
-    <text x="280" y="360" class="diagram-label">K303</text>
-    <line x1="350" y1="300" x2="350" y2="400" stroke="black" stroke-width="2"/>
-    <circle id="compressor-4" cx="350" cy="375" r="15" class="compressor-off"/>
-    <text x="330" y="360" class="diagram-label">K304</text>
-
+    <g transform="translate(-25, 0)">
+      <line x1="300" y1="300" x2="300" y2="400" stroke="black" stroke-width="2"/>
+      <circle id="compressor-3" cx="300" cy="375" r="15" class="compressor-off"/>
+      <text x="250" y="380" class="diagram-label">K303</text>
+      <line x1="350" y1="300" x2="350" y2="400" stroke="black" stroke-width="2"/>
+      <circle id="compressor-4" cx="350" cy="375" r="15" class="compressor-off"/>
+      <text x="370" y="380" class="diagram-label">K304</text>
+    </g>
     <!-- Sensorwaarden (pH, DO, Temp, Level) -->
     <text x="260" y="140" class="diagram-label" id="sensor-ph">pH: --</text>
     <text x="260" y="180" class="diagram-label" id="sensor-do">DO: --</text>
