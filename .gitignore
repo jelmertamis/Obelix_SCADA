@@ -3,3 +3,5 @@ __pycache__
 *.db
 project_code.txt
 codebase_gen.md
+CHANGELOG.md
+releases/*
