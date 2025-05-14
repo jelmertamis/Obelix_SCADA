@@ -50,9 +50,64 @@
     pointer-events: none;       /* Niet klikbaar */
   }
 
+  /* ▪️ Grid voor relay-knoppen */
+  #relay-controls {
+    display: grid;                                /* Grid-layout */
+    grid-template-columns: repeat(6, minmax(180px, 1fr));
+    gap: 1rem;                                    /* Ruimte tussen items */
+    margin: 1rem auto;                            /* Centreren */
+    max-width: 1200px;                            /* Max breedte */
+    justify-content: center;
+  }
+
+  /* ▪️ Relay-kaart styling */
+  .relay-control {
+    position: relative;          /* Nodig voor pop-up */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 180px;
+    height: 200px;
+    padding: 1rem;
+    background: #fff;            /* Witte kaart */
+    border-radius: 0.5rem;       /* Afgeronde hoeken */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .relay-control h3 {
+    font-size: 1.1rem;
+    text-align: center;
+  }
+
+  /* ▪️ Statusknop basisstijl */
+  .status-btn {
+    width: 100%;
+    height: 3.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .status-manual-on   { background: #28a745; }  /* Groen bij manueel ON */
+  .status-manual-off  { background: #dc3545; }  /* Rood bij manueel OFF */
+  .status-auto-on,
+  .status-auto-off {
+    border: 3px solid orange;   /* Oranje rand = AUTO */
+    box-shadow: 0 0 6px rgba(255,165,0,0.7);
+  }
+  .status-auto-on  { background: #28a745; }     /* Groen bij AUTO ON */
+  .status-auto-off { background: #dc3545; }     /* Rood bij AUTO OFF */
+
   /* ▪️ Pop-up menu */
   .mode-popup {
     position: absolute;         /* t.o.v. kaart */
+    top: 70%; left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -149,7 +204,9 @@
     </g>
   </svg>
 
-  </section>
+  <h2>Relay Controls</h2>  {# Sectietitel voor relaisbediening #}
+  <div id="relay-controls"></div>  {# Wordt via JS gevuld #}
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -158,6 +215,19 @@
   // Maak Socket.IO verbindingen
   const r302socket   = io('/r302');      // Relay-namespace
   const sensorSocket = io('/sensors');   // Sensor-namespace
+
+  // Labels voor UI
+  const relayLabels = {
+    0: 'Influent Pump',
+    1: 'Effluent Pump',
+    2: 'Nutrient Pump',
+    3: 'Compressor (K303)',
+    4: 'Compressor (K304)',
+    5: 'Heating Valve (A503)'
+  };
+
+  // Houd per relais bij welke mode actief is
+  const relayModes = {};
 
   // Map van coil ID → SVG-element en type
   const svgMap = {
@@ -169,76 +239,47 @@
     5: { id: 'valve-5',      type: 'valve'      }
   };
 
-  const popups = {};
-
-  // ➋ Factory-functie: creeër een mode-popup voor een coil
-  function createModePopup(coil) {
-    const popup = document.createElement('div');
-    popup.className = 'mode-popup';
-    popup.id = `popup-${coil}`;
-    popup.innerHTML = `
-      <button class="manual-on"  data-coil="${coil}">Manual ON</button>
-      <button class="manual-off" data-coil="${coil}">Manual OFF</button>
-      <button class="auto"       data-coil="${coil}">AUTO</button>
-    `;
-    document.body.appendChild(popup);
-    popups[coil] = popup;
-    popup.addEventListener('click', e => {
-    e.stopPropagation();
-    const btn = e.target.closest('button');
-    if (!btn) return;
-
-    const c = Number(btn.dataset.coil);
-    // Kies mode en bepaal fysieke ON/OFF
-    let mode, physOn;
-    if (btn.classList.contains('manual-on')) {
-      mode = 'MANUAL_ON';  physOn = true;
-    } else if (btn.classList.contains('manual-off')) {
-      mode = 'MANUAL_OFF'; physOn = false;
-    } else {
-      mode = 'AUTO';       physOn = false;  // of laat server zeggen
+  // Bouw de relay-kaarten dynamisch
+  function buildRelayControls() {
+    const container = document.getElementById('relay-controls');
+    container.innerHTML = '';            // Leeg eerst
+    for (let coil = 0; coil <= 5; coil++) {
+      relayModes[coil] = 'AUTO';         // Default mode
+      container.insertAdjacentHTML('beforeend', `
+        <div class="relay-control" id="relay-${coil}">
+          <h3>${relayLabels[coil]}</h3>
+          <button class="status-btn status-auto-off" id="status-${coil}">
+            Loading…
+          </button>
+          <div class="mode-popup" id="popup-${coil}">
+            <button class="manual-on"  data-coil="${coil}">Manual ON</button>
+            <button class="manual-off" data-coil="${coil}">Manual OFF</button>
+            <button class="auto"       data-coil="${coil}">AUTO</button>
+          </div>
+        </div>`);
     }
-
-    // 1) stuur naar server…
-    r302socket.emit('set_mode', { coil: c, mode });
-    // 2) update de kleur van het SVG-element
-    updateRelayStatus(c, physOn, mode);
-    // 3) sluit de popup
-    hideAllPopups();
-  });
   }
-
-  // ➌ Maak voor elke coil (0–5) een popup
-  Object.keys(svgMap).forEach(coil => createModePopup(coil));
-
-  // Hulpfunctie om alle popups te verbergen
-  function hideAllPopups() {
-    Object.values(popups).forEach(p => p.classList.remove('show'));
-  }
-
-  // Voor elk element in de SVG: bij klik de bijbehorende popup positioneren en tonen
-  Object.entries(svgMap).forEach(([coil, info]) => {
-    const svgEl = document.getElementById(info.id);
-    svgEl.style.cursor = 'pointer';
-    svgEl.addEventListener('click', e => {
-      e.stopPropagation();
-      hideAllPopups();
-
-      const popup = popups[coil];
-      // Positioneer popup iets naast de muis
-      popup.style.left = `${e.pageX + 8}px`;
-      popup.style.top  = `${e.pageY + 8}px`;
-      // Toon ‘m
-      popup.classList.add('show');
-    });
-  });
-
-  // Klik ergens anders sluit alle popups
-  document.addEventListener('click', hideAllPopups);
-
 
   // Update knop- en SVG-status van een relais
   function updateRelayStatus(coil, physOn, mode) {
+    const btn = document.getElementById(`status-${coil}`);
+    btn.className = 'status-btn';        // Reset classes
+    relayModes[coil] = mode;             // Bijwerken mode
+
+    // Tekst en kleur op basis van mode
+    if (mode === 'MANUAL_ON') {
+      btn.textContent = 'Manual ON';
+      btn.classList.add('status-manual-on');
+    }
+    else if (mode === 'MANUAL_OFF') {
+      btn.textContent = 'Manual OFF';
+      btn.classList.add('status-manual-off');
+    }
+    else {
+      btn.textContent = physOn ? 'Auto ON' : 'Auto OFF';
+      btn.classList.add(physOn ? 'status-auto-on' : 'status-auto-off');
+    }
+
     // Pas ook het SVG-element aan (pomp/compressor/klep)
     const map = svgMap[coil];
     if (map) {
@@ -255,6 +296,40 @@
       }
     }
   }
+
+  // Verberg alle pop-ups
+  function hideAllPopups() {
+    document.querySelectorAll('.mode-popup.show')
+            .forEach(p => p.classList.remove('show'));
+  }
+
+  // Init
+  buildRelayControls();
+
+  // Klik op statusknop toont pop-up
+  document.getElementById('relay-controls').addEventListener('click', e => {
+    if (e.target.classList.contains('status-btn')) {
+      e.stopPropagation();
+      const coil = e.target.id.split('-')[1];
+      const popup = document.getElementById(`popup-${coil}`);
+      const wasVisible = popup.classList.contains('show');
+      hideAllPopups();
+      if (!wasVisible) popup.classList.add('show');
+      return;
+    }
+    // Keuze in pop-up (Manual ON/OFF of AUTO)
+    const choice = e.target.closest('.mode-popup button');
+    if (choice) {
+      e.stopPropagation();
+      const coil = Number(choice.dataset.coil);
+      let mode = 'AUTO';
+      if (choice.classList.contains('manual-on'))   mode = 'MANUAL_ON';
+      else if (choice.classList.contains('manual-off')) mode = 'MANUAL_OFF';
+      r302socket.emit('set_mode', { coil, mode });  // Verzend naar server
+      updateRelayStatus(coil, mode !== 'MANUAL_OFF', mode);
+      hideAllPopups();
+    }
+  });
 
   // Klik elders sluit pop-ups
   document.addEventListener('click', hideAllPopups);
