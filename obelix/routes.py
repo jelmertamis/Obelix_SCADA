@@ -93,7 +93,7 @@ def init_routes(app):
             plot_url=url_for('plot.sensor_plot_png')
         )
     
-    @app.route('/grafana')
+    @app.route('/grafana_embed')
     def grafana():
         return render_template('grafana_embed.html')
 
