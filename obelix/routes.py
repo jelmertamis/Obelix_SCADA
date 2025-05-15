@@ -94,7 +94,7 @@ def init_routes(app):
         )
     
     @app.route('/grafana_embed')
-    def grafana():
+    def grafana_embed():
         return render_template('grafana_embed.html')
 
     @app.route('/sbr')
