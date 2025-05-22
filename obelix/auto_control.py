@@ -2,6 +2,7 @@
 
 import threading
 import itertools
+import time
 from flask_socketio import SocketIO
 from obelix.config import Config
 from obelix.database import (
@@ -91,7 +92,6 @@ class SBRController:
             return self.effluent_threshold
         return self.phase_end.get(phase, 0)
 
-
     def set_phase_times(self, react, wait, dose_nutrients, wait_after_N):
         # 1) Persist in de DB met de juiste keys
         set_setting('sbr_react_time_minutes',          str(react))
@@ -112,7 +112,6 @@ class SBRController:
         # 4) Log en push naar de UI
         log(f"SBR times updated: react={react}m, wait={wait}m, dose={dose_nutrients}m")
         self._emit_phase_times()
-
 
     def start(self):
         if not self.start_event.is_set():
@@ -166,7 +165,6 @@ class SBRController:
             'wait_after_N_seconds':    self._get_phase_target('wait_after_N'),
             'cycle_time_max_minutes':  self.cycle_time_max            
         }, namespace='/sbr')
-
 
     def _auto_off_all(self):
         inst = self.clients[self.r302_unit]
@@ -355,6 +353,7 @@ class SBRController:
         last_pulse_state = None
         
         while True:
+            tick_start = time.monotonic()
             log(f"🔍 Run loop tick - start_event: {self.start_event.is_set()}, fase: {self.current_phase}, "
                 f"phase_elapsed: {self.phase_elapsed}, timer: {self.timer}")
             self._monitor_temperature()
@@ -524,7 +523,11 @@ class SBRController:
                 'actual_level': actual
             }, namespace='/sbr')
 
-            self.socketio.sleep(1)
+            tick_end = time.monotonic()
+            elapsed = tick_end - tick_start
+            sleep_time = max(0, 1.0 - elapsed)
+            self.socketio.sleep(sleep_time)
+                    
             self.phase_elapsed += 1
             self.timer += 1
 
